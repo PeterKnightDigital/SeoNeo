@@ -71,13 +71,18 @@
 		var titleField = wrap.getAttribute('data-title-field') || cfg.roleTitle || 'seoneo_title';
 		var descField  = wrap.getAttribute('data-desc-field') || cfg.roleDescription || 'seoneo_description';
 
-		var title = getActiveValue(titleField);
-		if (!title) title = wrap.getAttribute('data-resolved-title') || '';
+		var rawTitle = getActiveValue(titleField);
+		var title;
+		if (rawTitle) {
+			title = formatTitle(rawTitle);
+		} else {
+			title = wrap.getAttribute('data-resolved-title') || '';
+		}
 
 		var desc = getActiveValue(descField);
 		if (!desc) desc = wrap.getAttribute('data-resolved-desc') || '';
 
-		titleEl.textContent = truncate(formatTitle(title), TITLE_TRUNCATE);
+		titleEl.textContent = truncate(title, TITLE_TRUNCATE);
 		descEl.textContent  = truncate(desc, DESC_TRUNCATE);
 	}
 
