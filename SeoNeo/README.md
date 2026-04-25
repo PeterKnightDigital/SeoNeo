@@ -128,6 +128,46 @@ Run via Tracy Console:
 include $config->paths->siteModules . 'SeoNeo/migrate-seoneo.php';
 ```
 
+## Frontend Admin Bar (SeoNeoBar)
+
+The optional **SeoNeoBar** module injects a discreet fixed bar at the bottom of every front-end page for logged-in editors. It gives instant access to fully-resolved SEO data without opening the page editor or inspecting source code.
+
+### What it shows
+
+The bar has three panel buttons:
+
+| Panel | Contents |
+|---|---|
+| **SEO & Meta** | Google SERP preview, resolved title + description with character counters, canonical URL, robots status badges (index/noindex, follow/nofollow), keywords, hreflang alternates |
+| **Headings** | Full H1–H6 tree extracted from the live page, indented and sized by level |
+| **Open Graph** | Live OG card preview (image, title, description, site name), individual tag values, Twitter/X card type |
+
+Each value shows **where it came from** — whether it came directly from a SeoNeo field, from a smart-map fallback field, or from a template default. This makes it easy to verify the fallback chain without guessing.
+
+### Installation
+
+1. Install **SeoNeo** first (required dependency)
+2. Install **SeoNeoBar** — it auto-loads alongside SeoNeo
+3. Visit any front-end page while logged in as an admin or editor with page-edit permission
+
+No template changes required. The bar is injected automatically before `</body>` on front-end pages. It is never shown to non-logged-in users.
+
+### Permissions
+
+The bar is only shown when:
+- The current user is logged in
+- The user is a superuser, or has `page-edit` permission
+
+The AJAX data endpoint performs the same permission check server-side on every request.
+
+### Design
+
+The bar uses a dark charcoal strip that works against any site design, with a clean light drawer for data. All CSS is namespaced under `pkd-seoneo-` and uses CSS custom properties (design tokens) that can be overridden if needed.
+
+The bar adds `margin-bottom` to `<body>` so page content is never hidden behind it.
+
+---
+
 ## Requirements
 
 - ProcessWire 3.0.200+
