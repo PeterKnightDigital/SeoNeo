@@ -345,9 +345,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		// 1. Dedicated per-page OG image field (highest priority)
 		if($page->template->hasField('seoneo_og_image')) {
 			$val = $page->get('seoneo_og_image');
-			if($val instanceof Pageimages && $val->count()) {
-				return (string) $val->first()->httpUrl;
-			}
+			if($val instanceof Pageimage) return (string) $val->httpUrl;
+			if($val instanceof Pageimages && $val->count()) return (string) $val->first()->httpUrl;
 		}
 
 		// 2. Scan configured image fields (MediaHub, per-template images, etc.)
@@ -366,9 +365,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$homepage = $this->wire('pages')->get(1);
 		if($homepage && $homepage->id && $homepage->id !== $page->id && $homepage->template->hasField('seoneo_og_image')) {
 			$val = $homepage->get('seoneo_og_image');
-			if($val instanceof Pageimages && $val->count()) {
-				return (string) $val->first()->httpUrl;
-			}
+			if($val instanceof Pageimage) return (string) $val->httpUrl;
+			if($val instanceof Pageimages && $val->count()) return (string) $val->first()->httpUrl;
 		}
 
 		// 4. Last resort: configured URL in module settings
