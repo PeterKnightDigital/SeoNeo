@@ -236,8 +236,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public function hookInjectAssets(HookEvent $event) {
 		$config = $this->wire('config');
 		$url = $config->urls($this->className()) ?: $config->urls->siteModules . 'SeoNeo/';
-		$config->styles->add($url . 'assets/SeoNeo.css');
-		$config->scripts->add($url . 'assets/SeoNeo.js');
+		$v = $this->getModuleInfo()['version'] ?? '1.0.0';
+		$config->styles->add($url . "assets/SeoNeo.css?v=$v");
+		$config->scripts->add($url . "assets/SeoNeo.js?v=$v");
 
 		$pageUrl = '';
 		$process = $this->wire('process');
@@ -253,6 +254,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'roleDescription' => $this->get('role_description') ?: 'seoneo_description',
 			'roleCanonical'   => $canonicalField,
 			'pageUrl'         => $pageUrl,
+			'siteName'        => (string) $this->get('site_name'),
+			'titleSeparator'  => (string) $this->get('title_separator'),
 			'counterTitleGreen'  => (int) $this->counter_title_green,
 			'counterTitleAmber'  => (int) $this->counter_title_amber,
 			'counterDescGreen'   => (int) $this->counter_desc_green,

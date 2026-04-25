@@ -53,6 +53,13 @@
 
 	// ── SERP preview ──────────────────────────────────────────────────
 
+	function formatTitle(raw) {
+		var siteName = cfg.siteName || '';
+		var sep = cfg.titleSeparator || '';
+		if (!siteName || !raw) return raw;
+		return raw + sep + siteName;
+	}
+
 	function refreshSerp() {
 		var wrap = d.querySelector('.seoneo-serp-wrap');
 		if (!wrap) return;
@@ -70,7 +77,7 @@
 		var desc = getActiveValue(descField);
 		if (!desc) desc = wrap.getAttribute('data-resolved-desc') || '';
 
-		titleEl.textContent = truncate(title, TITLE_TRUNCATE);
+		titleEl.textContent = truncate(formatTitle(title), TITLE_TRUNCATE);
 		descEl.textContent  = truncate(desc, DESC_TRUNCATE);
 	}
 
