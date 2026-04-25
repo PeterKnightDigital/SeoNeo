@@ -27,6 +27,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_description' => 'FieldtypeTextarea',
 		'seoneo_canonical'   => 'FieldtypeURL',
 		'seoneo_keywords'    => 'FieldtypeText',
+		'seoneo_og_image'    => 'FieldtypeImage',
 		'seoneo_noindex'     => 'FieldtypeCheckbox',
 		'seoneo_nofollow'    => 'FieldtypeCheckbox',
 		'seoneo_tab_END'     => 'FieldtypeFieldsetClose',
@@ -39,6 +40,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_description' => 'Meta Description',
 		'seoneo_canonical'   => 'Canonical URL',
 		'seoneo_keywords'    => 'Meta Keywords',
+		'seoneo_og_image'    => 'OG Image',
 		'seoneo_noindex'     => 'Noindex',
 		'seoneo_nofollow'    => 'Nofollow',
 		'seoneo_tab_END'     => '',
@@ -49,6 +51,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_description' => 'A short summary for search engine results. Leave empty to use smart-map fallbacks.',
 		'seoneo_canonical'   => 'Leave empty to use the page URL automatically.',
 		'seoneo_keywords'    => 'Comma-separated keywords. Most search engines no longer use this, but some sites still want it.',
+		'seoneo_og_image'    => 'Upload one image to use as the og:image for this page. If empty, SeoNeo falls back to other image fields, then the homepage OG image, then the module default URL.',
 		'seoneo_noindex'     => 'Tell search engines not to index this page.',
 		'seoneo_nofollow'    => 'Tell search engines not to follow links on this page.',
 	];
@@ -56,7 +59,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.0.0',
+			'version'  => '1.1.0',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -153,6 +156,12 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 			if($name === 'seoneo_description') {
 				$f->rows = 3;
+			}
+
+			if($name === 'seoneo_og_image') {
+				$f->maxFiles = 1;
+				$f->extensions = 'jpg jpeg png gif webp svg';
+				$f->collapsed = Inputfield::collapsedBlank;
 			}
 
 			if($name === 'seoneo_tab_END') {
@@ -333,6 +342,15 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	public function ___getOgImage(Page $page): string {
+		// 1. Dedicated per-page OG image field (highest priority)
+		if($page->template->hasField('seoneo_og_image')) {
+			$val = $page->get('seoneo_og_image');
+			if($val instanceof Pageimages && $val->count()) {
+				return (string) $val->first()->httpUrl;
+			}
+		}
+
+		// 2. Scan configured image fields (MediaHub, per-template images, etc.)
 		$fieldNames = array_map('trim', explode(',', (string) $this->get('og_image_fields')));
 		foreach($fieldNames as $name) {
 			if($name === '' || !$page->template->hasField($name)) continue;
@@ -343,6 +361,17 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 				return (string) $val->httpUrl;
 			}
 		}
+
+		// 3. Homepage seoneo_og_image as site-wide default (skip if we're already on the homepage)
+		$homepage = $this->wire('pages')->get(1);
+		if($homepage && $homepage->id && $homepage->id !== $page->id && $homepage->template->hasField('seoneo_og_image')) {
+			$val = $homepage->get('seoneo_og_image');
+			if($val instanceof Pageimages && $val->count()) {
+				return (string) $val->first()->httpUrl;
+			}
+		}
+
+		// 4. Last resort: configured URL in module settings
 		return (string) $this->get('og_image_default');
 	}
 
@@ -652,17 +681,27 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$fs->label = $this->_('Open Graph');
 		$fs->collapsed = Inputfield::collapsedYes;
 
+		$f = $modules->get('InputfieldMarkup');
+		$f->label = $this->_('OG image resolution order');
+		$f->value = '<ol style="margin:0;padding-left:1.4em;font-size:13px;line-height:1.8">' .
+			'<li><strong>seoneo_og_image</strong> — dedicated per-page image field in the SEO tab</li>' .
+			'<li><strong>Image field scan</strong> — checks the field names listed below in order</li>' .
+			'<li><strong>Homepage seoneo_og_image</strong> — used as the site-wide default if set on the home page</li>' .
+			'<li><strong>Default OG image URL</strong> — the URL below, last resort</li>' .
+			'</ol>';
+		$fs->add($f);
+
 		$f = $modules->get('InputfieldText');
 		$f->name = 'og_image_fields';
 		$f->label = $this->_('Image field scan order');
-		$f->description = $this->_('Comma-separated list of PW image field names to check for og:image. The first field with an image wins.');
+		$f->description = $this->_('Comma-separated list of PW image field names to scan (step 2). The first field on the page that contains an image wins.');
 		$f->value = $this->get('og_image_fields');
 		$fs->add($f);
 
 		$f = $modules->get('InputfieldURL');
 		$f->name = 'og_image_default';
-		$f->label = $this->_('Default OG image');
-		$f->description = $this->_('Fallback image URL when the page has no image fields. Recommended size: 1200×630px.');
+		$f->label = $this->_('Default OG image URL');
+		$f->description = $this->_('Absolute URL used as a last resort if no image is found anywhere. Recommended size: 1200×630px.');
 		$f->value = $this->get('og_image_default');
 		$fs->add($f);
 
