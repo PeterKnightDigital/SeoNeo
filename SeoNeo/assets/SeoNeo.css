@@ -1,0 +1,54 @@
+/*
+ * SeoNeo — SERP preview + SEO character counters
+ *
+ * All selectors prefixed with "seoneo-" to avoid leaking into
+ * the ProcessWire admin.
+ */
+
+/* ── SERP preview ─────────────────────────────────────────────────── */
+
+.seoneo-serp-wrap {
+	margin: 0 0 4px;
+}
+
+.seoneo-serp-preview {
+	font-family: arial, sans-serif;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	padding: 14px 16px;
+	max-width: 600px;
+}
+
+.seoneo-serp-preview .seoneo-serp-url {
+	color: #202124;
+	font-size: 12px;
+	margin-bottom: 2px;
+	word-break: break-all;
+}
+
+.seoneo-serp-preview .seoneo-serp-title {
+	color: #1a0dab;
+	font-size: 20px;
+	line-height: 1.3;
+	margin: 2px 0 4px;
+}
+
+.seoneo-serp-preview .seoneo-serp-description {
+	color: #4d5156;
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+/* ── SEO character counters ───────────────────────────────────────── */
+
+.seoneo-counter {
+	font-size: 0.8em;
+	margin-top: 3px;
+	color: #6b7280;
+	transition: color 0.15s;
+}
+
+.seoneo-counter[data-state="green"] { color: #047857; }
+.seoneo-counter[data-state="amber"] { color: #b45309; }
+.seoneo-counter[data-state="red"]   { color: #b91c1c; font-weight: 600; }
