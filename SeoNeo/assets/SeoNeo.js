@@ -119,10 +119,25 @@
 		});
 	}
 
+	// ── Canonical placeholder ─────────────────────────────────────────
+
+	function setCanonicalPlaceholder() {
+		var canonField = cfg.roleCanonical || 'seoneo_canonical';
+		var pageUrl = cfg.pageUrl || '';
+		if (!pageUrl) return;
+		var inputs = findInputForFieldLanguage(canonField);
+		inputs.forEach(function(input) {
+			if (!input.getAttribute('placeholder')) {
+				input.setAttribute('placeholder', pageUrl);
+			}
+		});
+	}
+
 	// ── Init ──────────────────────────────────────────────────────────
 
 	SeoNeo.init = function() {
 		injectCounters();
+		setCanonicalPlaceholder();
 		refreshSerp();
 	};
 

@@ -26,6 +26,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_title'       => 'FieldtypeText',
 		'seoneo_description' => 'FieldtypeTextarea',
 		'seoneo_canonical'   => 'FieldtypeURL',
+		'seoneo_keywords'    => 'FieldtypeText',
 		'seoneo_noindex'     => 'FieldtypeCheckbox',
 		'seoneo_nofollow'    => 'FieldtypeCheckbox',
 		'seoneo_tab_END'     => 'FieldtypeFieldsetClose',
@@ -37,6 +38,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_title'       => 'Meta Title',
 		'seoneo_description' => 'Meta Description',
 		'seoneo_canonical'   => 'Canonical URL',
+		'seoneo_keywords'    => 'Meta Keywords',
 		'seoneo_noindex'     => 'Noindex',
 		'seoneo_nofollow'    => 'Nofollow',
 		'seoneo_tab_END'     => '',
@@ -46,6 +48,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		'seoneo_title'       => 'Override the page title used in search results. Leave empty to use smart-map fallbacks.',
 		'seoneo_description' => 'A short summary for search engine results. Leave empty to use smart-map fallbacks.',
 		'seoneo_canonical'   => 'Leave empty to use the page URL automatically.',
+		'seoneo_keywords'    => 'Comma-separated keywords. Most search engines no longer use this, but some sites still want it.',
 		'seoneo_noindex'     => 'Tell search engines not to index this page.',
 		'seoneo_nofollow'    => 'Tell search engines not to follow links on this page.',
 	];
@@ -236,9 +239,20 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$config->styles->add($url . 'assets/SeoNeo.css');
 		$config->scripts->add($url . 'assets/SeoNeo.js');
 
+		$pageUrl = '';
+		$process = $this->wire('process');
+		if($process && $process instanceof ProcessPageEdit) {
+			$editPage = $process->getPage();
+			if($editPage && $editPage->id) $pageUrl = (string) $editPage->httpUrl;
+		}
+
+		$canonicalField = $this->get('role_canonical') ?: 'seoneo_canonical';
+
 		$jsConfig = [
 			'roleTitle'       => $this->get('role_title') ?: 'seoneo_title',
 			'roleDescription' => $this->get('role_description') ?: 'seoneo_description',
+			'roleCanonical'   => $canonicalField,
+			'pageUrl'         => $pageUrl,
 			'counterTitleGreen'  => (int) $this->counter_title_green,
 			'counterTitleAmber'  => (int) $this->counter_title_amber,
 			'counterDescGreen'   => (int) $this->counter_desc_green,
@@ -331,6 +345,13 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$robots = $this->getRobots($page);
 		if($robots !== 'index,follow') {
 			$lines[] = '<meta name="robots" content="' . $this->esc($robots) . '">';
+		}
+
+		if($page->template->hasField('seoneo_keywords')) {
+			$kw = trim((string) $page->get('seoneo_keywords'));
+			if($kw !== '') {
+				$lines[] = '<meta name="keywords" content="' . $this->esc($kw) . '">';
+			}
 		}
 
 		foreach($this->getCustomTagMappings() as $fieldName => $tagTemplate) {
