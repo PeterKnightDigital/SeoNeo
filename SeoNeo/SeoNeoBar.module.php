@@ -21,7 +21,7 @@ class SeoNeoBar extends WireData implements Module {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo Bar',
-			'version'  => '1.0.0',
+			'version'  => '1.1.0',
 			'summary'  => 'Frontend admin bar showing resolved SEO data for the current page.',
 			'icon'     => 'bar-chart',
 			'autoload' => true,
@@ -341,6 +341,30 @@ class SeoNeoBar extends WireData implements Module {
       <span class="pkd-seoneo-bar__btn-label">Open Graph</span>
     </button>
 
+    <button
+      class="pkd-seoneo-bar__btn"
+      type="button"
+      data-panel="links"
+      aria-expanded="false"
+      aria-controls="pkd-seoneo-drawer"
+      title="Links"
+    >
+      {$this->svgLinks()}
+      <span class="pkd-seoneo-bar__btn-label">Links</span>
+    </button>
+
+    <button
+      class="pkd-seoneo-bar__btn"
+      type="button"
+      data-panel="images"
+      aria-expanded="false"
+      aria-controls="pkd-seoneo-drawer"
+      title="Images"
+    >
+      {$this->svgImages()}
+      <span class="pkd-seoneo-bar__btn-label">Images</span>
+    </button>
+
   </nav>
 
   <span class="pkd-seoneo-bar__spacer"></span>
@@ -452,5 +476,13 @@ HTML;
 
 	protected function svgClose(): string {
 		return '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+	}
+
+	protected function svgLinks(): string {
+		return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+	}
+
+	protected function svgImages(): string {
+		return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
 	}
 }

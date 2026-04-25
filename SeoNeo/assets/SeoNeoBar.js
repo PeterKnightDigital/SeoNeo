@@ -76,7 +76,7 @@
     });
 
     // Show panel title
-    const panelTitles = { seo: 'SEO & Meta', headings: 'Headings', og: 'Open Graph' };
+    const panelTitles = { seo: 'SEO & Meta', headings: 'Headings', og: 'Open Graph', links: 'Links', images: 'Images' };
     drawerTitle.textContent = panelTitles[panelId] || 'SeoNeo';
 
     // Open
@@ -125,6 +125,8 @@
           case 'seo':      drawerBody.innerHTML = renderSeoPanel(data);      break;
           case 'headings': drawerBody.innerHTML = renderHeadingsPanel(data); break;
           case 'og':       drawerBody.innerHTML = renderOgPanel(data);       break;
+          case 'links':    drawerBody.innerHTML = renderLinksPanel();        break;
+          case 'images':   drawerBody.innerHTML = renderImagesPanel();       break;
           default:         drawerBody.innerHTML = '';
         }
         drawerBody.scrollTop = 0;
@@ -266,15 +268,22 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  //  DOM element filter — excludes admin toolbars from page scans
+  // ─────────────────────────────────────────────────────────────────────
+
+  function isPageContent(el) {
+    return !el.closest('.pkd-seoneo-bar') &&
+           !el.closest('.pkd-seoneo-drawer') &&
+           !el.closest('#tracy-debug') &&
+           !el.closest('#tracy-debug-bar');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   //  Panel: Headings
   // ─────────────────────────────────────────────────────────────────────
 
   function renderHeadingsPanel(data) {
-    // Extract headings from the live page DOM (we're running on the page itself)
-    const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6')).filter(function (el) {
-      // Exclude any headings inside the SeoNeo bar / drawer
-      return !el.closest('.pkd-seoneo-bar') && !el.closest('.pkd-seoneo-drawer');
-    });
+    const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6')).filter(isPageContent);
 
     if (!headings.length) {
       return emptyState('No headings found', 'No H1–H6 elements were found on this page.');
@@ -338,6 +347,246 @@
     const tw = data.twitter || {};
     const cardType = tw.card || 'summary';
     html += section('Twitter / X', '<div class="pkd-seoneo-twitter">' + svgTwitter() + '<span>twitter:card = <strong>' + esc(cardType) + '</strong></span></div>');
+
+    return html;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Panel: Links
+  // ─────────────────────────────────────────────────────────────────────
+
+  function renderLinksPanel() {
+    // Collect all anchors on the page, excluding SeoNeoBar's own elements
+    var allLinks = Array.from(document.querySelectorAll('a')).filter(isPageContent);
+
+    if (!allLinks.length) {
+      return emptyState('No links found', 'No anchor elements were found on this page.');
+    }
+
+    var broken   = [];
+    var internal = [];
+    var external = [];
+    var hashOnly = [];
+    var uniqueHrefs = new Set();
+
+    allLinks.forEach(function (el) {
+      var href = (el.getAttribute('href') || '').trim();
+      var text = el.textContent.trim() || el.getAttribute('aria-label') || '';
+      var entry = { href: href, text: text };
+      var lower = href.toLowerCase();
+
+      // Truly broken: no href at all, or javascript: pseudo-protocol
+      if (!href || lower === 'javascript:;' || lower.indexOf('javascript:void') === 0) {
+        broken.push(entry);
+        return;
+      }
+
+      // Hash-only links (href="#") — common for JS-driven UI (tabs, toggles, dropdowns)
+      if (href === '#') {
+        hashOnly.push(entry);
+        return;
+      }
+
+      uniqueHrefs.add(href);
+
+      // Classify internal vs external by hostname
+      var isInternal = false;
+      try {
+        if (!/^[a-z][a-z\d+\-.]*:/i.test(href)) {
+          isInternal = true;
+        } else {
+          isInternal = new URL(href).hostname === window.location.hostname;
+        }
+      } catch (e) {
+        isInternal = true;
+      }
+
+      if (isInternal) {
+        internal.push(entry);
+      } else {
+        external.push(entry);
+      }
+    });
+
+    var total   = allLinks.length;
+    var unique  = uniqueHrefs.size;
+    var numInt  = internal.length;
+    var numExt  = external.length;
+
+    var html = '';
+
+    // Summary
+    var summaryHtml = '<div class="pkd-seoneo-badge-row">' +
+      badge('neutral', 'Total: ' + total) +
+      badge('neutral', 'Unique: ' + unique) +
+      badge('good', svgCheck() + ' Internal: ' + numInt) +
+      badge('neutral', 'External: ' + numExt) +
+      (hashOnly.length ? badge('neutral', '# Hash: ' + hashOnly.length) : '') +
+      (broken.length ? badge('bad', svgWarn() + ' Broken: ' + broken.length) : '') +
+    '</div>';
+    html += section('Summary', summaryHtml);
+
+    // Broken anchors (truly problematic)
+    if (broken.length) {
+      var brokenHtml = '<ul class="pkd-seoneo-tag-list">';
+      broken.forEach(function (link) {
+        var display = link.text || link.href || '(no text, no href)';
+        brokenHtml += '<li class="pkd-seoneo-tag-list__item pkd-seoneo-tag-list__item--error">' + esc(truncate(display, 60)) + '</li>';
+      });
+      brokenHtml += '</ul>';
+      html += section('Broken (' + broken.length + ')', brokenHtml);
+    }
+
+    // Hash-only links (informational, not alarming)
+    if (hashOnly.length) {
+      var hashHtml = '<ul class="pkd-seoneo-tag-list">';
+      hashOnly.forEach(function (link) {
+        var display = link.text || '(no text)';
+        hashHtml += '<li class="pkd-seoneo-tag-list__item">' + esc(truncate(display, 60)) + '</li>';
+      });
+      hashHtml += '</ul>';
+      html += section('Hash-only (#) links (' + hashOnly.length + ')', hashHtml);
+    }
+
+    // Render a grouped link list
+    function renderLinkList(links) {
+      if (!links.length) {
+        return '<p class="pkd-seoneo-links__none">None</p>';
+      }
+      var out = '<ul class="pkd-seoneo-links">';
+      links.forEach(function (link) {
+        out += '<li class="pkd-seoneo-links__item">' +
+          '<a class="pkd-seoneo-links__href" href="' + esc(link.href) + '" target="_blank" rel="noopener">' + esc(truncate(link.href, 55)) + '</a>' +
+          (link.text
+            ? '<span class="pkd-seoneo-links__text">' + esc(truncate(link.text, 65)) + '</span>'
+            : '<span class="pkd-seoneo-links__text pkd-seoneo-links__text--empty">(no anchor text)</span>'
+          ) +
+        '</li>';
+      });
+      out += '</ul>';
+      return out;
+    }
+
+    html += section('Internal (' + numInt + ')', renderLinkList(internal));
+    html += section('External (' + numExt + ')', renderLinkList(external));
+
+    return html;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Panel: Images
+  // ─────────────────────────────────────────────────────────────────────
+
+  function renderImagesPanel() {
+    // Collect all images on the page, excluding SeoNeoBar's own elements
+    var allImages = Array.from(document.querySelectorAll('img')).filter(isPageContent);
+
+    if (!allImages.length) {
+      return emptyState('No images found', 'No img elements were found on this page.');
+    }
+
+    var total        = allImages.length;
+    var missingAlt   = allImages.filter(function (el) { return !el.hasAttribute('alt'); });
+    var missingTitle = allImages.filter(function (el) { return !el.title; });
+
+    // Tally file types
+    var typeCounts = {};
+    allImages.forEach(function (el) {
+      var src = el.getAttribute('src') || '';
+      var filename = src.split('/').pop().split('?')[0];
+      var extMatch = filename.match(/\.([a-zA-Z0-9]+)$/);
+      var ext = extMatch ? extMatch[1].toUpperCase() : 'OTHER';
+      typeCounts[ext] = (typeCounts[ext] || 0) + 1;
+    });
+
+    var html = '';
+
+    // Summary — counts row
+    var summaryHtml = '<div class="pkd-seoneo-badge-row">' +
+      badge('neutral', 'Total: ' + total) +
+      badge(
+        missingAlt.length === 0 ? 'good' : 'bad',
+        (missingAlt.length === 0 ? svgCheck() : svgWarn()) + ' Without Alt: ' + missingAlt.length
+      ) +
+      badge(
+        missingTitle.length === 0 ? 'good' : 'warn',
+        'Without Title: ' + missingTitle.length
+      ) +
+    '</div>';
+
+    // Type breakdown row
+    var typeBadges = Object.keys(typeCounts).sort().map(function (ext) {
+      return badge('neutral', ext + ': ' + typeCounts[ext]);
+    }).join('');
+    summaryHtml += '<div class="pkd-seoneo-badge-row" style="margin-top:var(--pkd-seoneo-sp-2)">' + typeBadges + '</div>';
+
+    html += section('Summary', summaryHtml);
+
+    // Image list
+    var listHtml = '<ul class="pkd-seoneo-images">';
+    allImages.forEach(function (el) {
+      var src       = el.getAttribute('src') || '';
+      var hasAlt    = el.hasAttribute('alt');
+      var altVal    = el.getAttribute('alt'); // null if missing, '' if empty, string if set
+      var titleVal  = el.title || '';
+      var filename  = src ? src.split('/').pop().split('?')[0] : '(no src)';
+      var naturalW  = el.naturalWidth;
+      var naturalH  = el.naturalHeight;
+      var dims      = (naturalW && naturalH) ? naturalW + '\u00d7' + naturalH : '';
+      var extMatch  = filename.match(/\.([a-zA-Z0-9]+)$/);
+      var fileType  = extMatch ? extMatch[1].toUpperCase() : '';
+
+      // Alt status badge
+      var altStatus;
+      if (!hasAlt) {
+        altStatus = badge('bad', svgWarn() + ' missing');
+      } else if (altVal === '') {
+        altStatus = badge('neutral', svgCheck() + ' empty');
+      } else {
+        altStatus = badge('good', svgCheck() + ' ' + esc(truncate(altVal, 30)));
+      }
+
+      // Title status — muted dash when absent (less important)
+      var titleStatus = titleVal
+        ? badge('good', svgCheck() + ' ' + esc(truncate(titleVal, 30)))
+        : '<span class="pkd-seoneo-images__dash">\u2014</span>';
+
+      listHtml += '<li class="pkd-seoneo-images__item' + (!hasAlt ? ' pkd-seoneo-images__item--warn' : '') + '">' +
+        '<div class="pkd-seoneo-images__thumb">' +
+          (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '') +
+        '</div>' +
+        '<div class="pkd-seoneo-images__meta">' +
+          '<div class="pkd-seoneo-images__src">' + esc(filename) + '</div>' +
+          (dims || fileType
+            ? '<div class="pkd-seoneo-images__tech-row">' +
+                (dims
+                  ? '<div class="pkd-seoneo-images__attr-row">' +
+                      '<span class="pkd-seoneo-images__attr-label">W\u00d7H</span>' +
+                      '<span class="pkd-seoneo-images__attr-value pkd-seoneo-images__dims">' + esc(dims) + '</span>' +
+                    '</div>'
+                  : '') +
+                (fileType
+                  ? '<div class="pkd-seoneo-images__attr-row">' +
+                      '<span class="pkd-seoneo-images__attr-label">Type</span>' +
+                      '<span class="pkd-seoneo-images__attr-value pkd-seoneo-images__dims">' + esc(fileType) + '</span>' +
+                    '</div>'
+                  : '') +
+              '</div>'
+            : '') +
+          '<div class="pkd-seoneo-images__attr-row">' +
+            '<span class="pkd-seoneo-images__attr-label">Alt</span>' +
+            '<span class="pkd-seoneo-images__attr-value">' + altStatus + '</span>' +
+          '</div>' +
+          '<div class="pkd-seoneo-images__attr-row">' +
+            '<span class="pkd-seoneo-images__attr-label">Title</span>' +
+            '<span class="pkd-seoneo-images__attr-value">' + titleStatus + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</li>';
+    });
+    listHtml += '</ul>';
+
+    html += section('Images (' + total + ')', listHtml);
 
     return html;
   }
@@ -487,6 +736,10 @@
 
   function svgTwitter() {
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg>';
+  }
+
+  function svgLink() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
   }
 
   // ─────────────────────────────────────────────────────────────────────
