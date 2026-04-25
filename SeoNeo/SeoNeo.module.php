@@ -84,6 +84,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'smart_map_text'   => "title=headline,title\ndescription=summary,body",
 			'template_defaults_text' => '',
 			'custom_tags_text' => '',
+			'og_image_fields'  => 'og_image,screenshot,images,image,blog_images',
+			'og_image_default' => '',
 			'counter_title_green'  => 60,
 			'counter_title_amber'  => 70,
 			'counter_desc_green'   => 160,
@@ -318,6 +320,33 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	// ────────────────────────────────────────────────────────────────────
+	//  Open Graph
+	// ────────────────────────────────────────────────────────────────────
+
+	public function ___getOgTitle(Page $page): string {
+		$field = $this->get('role_title') ?: 'seoneo_title';
+		$raw = $this->readField($page, $field);
+		if($raw === '') $raw = $this->resolveSmartMap($page, 'title');
+		if($raw === '') $raw = $this->renderTemplateDefault($page, 'title');
+		if($raw === '') $raw = (string) $page->title;
+		return $raw;
+	}
+
+	public function ___getOgImage(Page $page): string {
+		$fieldNames = array_map('trim', explode(',', (string) $this->get('og_image_fields')));
+		foreach($fieldNames as $name) {
+			if($name === '' || !$page->template->hasField($name)) continue;
+			$val = $page->get($name);
+			if($val instanceof Pageimages && $val->count()) {
+				return (string) $val->first()->httpUrl;
+			} elseif($val instanceof Pageimage) {
+				return (string) $val->httpUrl;
+			}
+		}
+		return (string) $this->get('og_image_default');
+	}
+
+	// ────────────────────────────────────────────────────────────────────
 	//  Rendering
 	// ────────────────────────────────────────────────────────────────────
 
@@ -356,6 +385,26 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 				$lines[] = '<meta name="keywords" content="' . $this->esc($kw) . '">';
 			}
 		}
+
+		// Open Graph
+		$ogTitle = $this->getOgTitle($page);
+		if($ogTitle !== '') {
+			$lines[] = '<meta property="og:title" content="' . $this->esc($ogTitle) . '">';
+		}
+		if($desc !== '') {
+			$lines[] = '<meta property="og:description" content="' . $this->esc($desc) . '">';
+		}
+		$lines[] = '<meta property="og:url" content="' . $this->esc($canonical) . '">';
+		$lines[] = '<meta property="og:type" content="website">';
+		$siteName = (string) $this->get('site_name');
+		if($siteName !== '') {
+			$lines[] = '<meta property="og:site_name" content="' . $this->esc($siteName) . '">';
+		}
+		$ogImage = $this->getOgImage($page);
+		if($ogImage !== '') {
+			$lines[] = '<meta property="og:image" content="' . $this->esc($ogImage) . '">';
+		}
+		$lines[] = '<meta name="twitter:card" content="' . ($ogImage ? 'summary_large_image' : 'summary') . '">';
 
 		foreach($this->getCustomTagMappings() as $fieldName => $tagTemplate) {
 			if(!$page->template->hasField($fieldName)) continue;
@@ -596,6 +645,28 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->value = $this->get('custom_tags_text');
 		$f->rows = 5;
 		$inputfields->add($f);
+
+		// -- Open Graph ---------------------------------------------------
+
+		$fs = $modules->get('InputfieldFieldset');
+		$fs->label = $this->_('Open Graph');
+		$fs->collapsed = Inputfield::collapsedYes;
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'og_image_fields';
+		$f->label = $this->_('Image field scan order');
+		$f->description = $this->_('Comma-separated list of PW image field names to check for og:image. The first field with an image wins.');
+		$f->value = $this->get('og_image_fields');
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldURL');
+		$f->name = 'og_image_default';
+		$f->label = $this->_('Default OG image');
+		$f->description = $this->_('Fallback image URL when the page has no image fields. Recommended size: 1200×630px.');
+		$f->value = $this->get('og_image_default');
+		$fs->add($f);
+
+		$inputfields->add($fs);
 
 		// -- Counter thresholds -------------------------------------------
 
