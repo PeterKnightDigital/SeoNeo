@@ -18,6 +18,8 @@
 	border-radius: 8px;
 	padding: 14px 16px;
 	max-width: 600px;
+	box-sizing: border-box;
+	overflow-wrap: anywhere;
 }
 
 .seoneo-serp-preview .seoneo-serp-url {
@@ -25,6 +27,7 @@
 	font-size: 12px;
 	margin-bottom: 2px;
 	word-break: break-all;
+	overflow-wrap: anywhere;
 }
 
 .seoneo-serp-preview .seoneo-serp-title {
@@ -32,12 +35,83 @@
 	font-size: 20px;
 	line-height: 1.3;
 	margin: 2px 0 4px;
+	overflow-wrap: break-word;
+	word-break: break-word;
 }
 
 .seoneo-serp-preview .seoneo-serp-description {
 	color: #4d5156;
 	font-size: 14px;
 	line-height: 1.4;
+	overflow-wrap: break-word;
+}
+
+/* Narrow viewports — keep the preview readable on phones, sidebars,
+ * and ProcessWire admin "narrow" layouts (the page-edit form sits
+ * inside a column that can drop below ~480px wide on tablets). */
+@media (max-width: 600px) {
+	.seoneo-serp-preview {
+		padding: 12px 12px;
+		border-radius: 6px;
+	}
+	.seoneo-serp-preview .seoneo-serp-title {
+		font-size: 17px;
+		line-height: 1.25;
+	}
+	.seoneo-serp-preview .seoneo-serp-description {
+		font-size: 13px;
+		line-height: 1.4;
+	}
+	.seoneo-serp-preview .seoneo-serp-url {
+		font-size: 11px;
+	}
+}
+
+@media (max-width: 380px) {
+	.seoneo-serp-preview {
+		padding: 10px;
+	}
+	.seoneo-serp-preview .seoneo-serp-title {
+		font-size: 15px;
+	}
+}
+
+/* ── Effective values panel ───────────────────────────────────────── */
+
+.seoneo-effective {
+	max-width: 600px;
+}
+
+.seoneo-effective summary {
+	padding: 4px 2px;
+}
+
+.seoneo-effective table {
+	font-size: 13px;
+}
+
+.seoneo-effective th,
+.seoneo-effective td {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+@media (max-width: 480px) {
+	.seoneo-effective table,
+	.seoneo-effective tbody,
+	.seoneo-effective tr {
+		display: block;
+	}
+	.seoneo-effective th {
+		width: auto !important;
+		display: block;
+		padding-bottom: 0 !important;
+	}
+	.seoneo-effective td {
+		display: block;
+		padding-top: 0 !important;
+		padding-bottom: .6em !important;
+	}
 }
 
 /* ── SEO character counters ───────────────────────────────────────── */

@@ -67,8 +67,11 @@ $seoneoFields = [
     'seoneo_description',
     'seoneo_canonical',
     'seoneo_keywords',
+    'seoneo_og_image',
+    'seoneo_og_type',
     'seoneo_noindex',
     'seoneo_nofollow',
+    'seoneo_custom',
     'seoneo_tab_END',
 ];
 
