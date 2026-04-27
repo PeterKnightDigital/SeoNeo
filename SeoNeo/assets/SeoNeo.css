@@ -114,6 +114,185 @@
 	}
 }
 
+/* ── Fallback chain ───────────────────────────────────────────────── */
+
+/* Chain icon button — sits inline after the field label text */
+.seoneo-chain-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	margin-left: 6px;
+	padding: 0;
+	border: none;
+	border-radius: 3px;
+	background: transparent;
+	color: #9ca3af;
+	cursor: pointer;
+	vertical-align: middle;
+	transition: color 0.15s, background 0.15s;
+	line-height: 1;
+}
+
+.seoneo-chain-btn:hover,
+.seoneo-chain-btn[aria-expanded="true"] {
+	color: #374151;
+	background: #f3f4f6;
+}
+
+.seoneo-chain-btn svg {
+	width: 13px;
+	height: 13px;
+	display: block;
+}
+
+/* Popover container */
+.seoneo-chain-popover {
+	position: absolute;
+	top: calc(100% + 6px);
+	left: 0;
+	z-index: 9999;
+	min-width: 260px;
+	max-width: 380px;
+	background: #fff;
+	border: 1px solid #d1d5db;
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.seoneo-chain-header {
+	padding: 8px 12px 6px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #6b7280;
+	border-bottom: 1px solid #f3f4f6;
+}
+
+/* Chain step list */
+.seoneo-chain-list {
+	list-style: none;
+	margin: 0;
+	padding: 4px 0 6px;
+}
+
+.seoneo-chain-step {
+	display: grid;
+	grid-template-columns: 16px 1fr auto;
+	grid-template-rows: auto auto;
+	column-gap: 8px;
+	align-items: start;
+	padding: 6px 12px 6px 10px;
+	border-left: 3px solid transparent;
+}
+
+.seoneo-chain-step + .seoneo-chain-step {
+	border-top: 1px solid #f9fafb;
+}
+
+/* Active/winning step */
+.seoneo-chain-step--winner {
+	background: #f0fdf4;
+	border-left-color: #16a34a;
+}
+
+/* Empty (skipped) step */
+.seoneo-chain-step--empty {
+	opacity: 0.55;
+}
+
+/* Indicator dot */
+.seoneo-chain-indicator {
+	grid-column: 1;
+	grid-row: 1;
+	display: block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 2px solid #d1d5db;
+	margin-top: 3px;
+}
+
+.seoneo-chain-step--winner .seoneo-chain-indicator {
+	background: #16a34a;
+	border-color: #16a34a;
+}
+
+/* Field label */
+.seoneo-chain-label {
+	grid-column: 2;
+	grid-row: 1;
+	font-weight: 600;
+	color: #111827;
+	word-break: break-all;
+}
+
+.seoneo-chain-step--winner .seoneo-chain-label {
+	color: #15803d;
+}
+
+/* Value preview */
+.seoneo-chain-preview {
+	grid-column: 2;
+	grid-row: 2;
+	color: #6b7280;
+	font-size: 12px;
+	margin-top: 1px;
+	word-break: break-word;
+}
+
+.seoneo-chain-preview em {
+	font-style: normal;
+	color: #d1d5db;
+}
+
+/* Promote button */
+.seoneo-chain-promote {
+	grid-column: 3;
+	grid-row: 1 / 3;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 2px 7px;
+	border: 1px solid #16a34a;
+	border-radius: 4px;
+	background: transparent;
+	color: #15803d;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	align-self: center;
+	transition: background 0.12s, color 0.12s;
+}
+
+.seoneo-chain-promote:hover {
+	background: #16a34a;
+	color: #fff;
+}
+
+.seoneo-chain-promote svg {
+	width: 11px;
+	height: 11px;
+	flex-shrink: 0;
+}
+
+.seoneo-chain-promote span {
+	display: inline;
+}
+
+/* Ghost text — shows below the input when the primary field is empty */
+.seoneo-chain-ghost {
+	font-size: 0.8em;
+	color: #9ca3af;
+	margin-top: 3px;
+	font-style: italic;
+}
+
 /* ── SEO character counters ───────────────────────────────────────── */
 
 .seoneo-counter {
