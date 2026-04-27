@@ -355,11 +355,17 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$config->styles->add($url . "assets/SeoNeo.css?v=$v");
 		$config->scripts->add($url . "assets/SeoNeo.js?v=$v");
 
-		$pageUrl = '';
+		$pageUrl    = '';
+		$titleChain = [];
+		$descChain  = [];
 		$process = $this->wire('process');
 		if($process && $process instanceof ProcessPageEdit) {
 			$editPage = $process->getPage();
-			if($editPage && $editPage->id) $pageUrl = (string) $editPage->httpUrl;
+			if($editPage && $editPage->id) {
+				$pageUrl    = (string) $editPage->httpUrl;
+				$titleChain = $this->getSmartMapChain($editPage, 'title');
+				$descChain  = $this->getSmartMapChain($editPage, 'description');
+			}
 		}
 
 		$canonicalField = $this->get('role_canonical') ?: 'seoneo_canonical';
@@ -375,6 +381,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'counterTitleAmber'  => (int) $this->counter_title_amber,
 			'counterDescGreen'   => (int) $this->counter_desc_green,
 			'counterDescAmber'   => (int) $this->counter_desc_amber,
+			'titleChain'      => $titleChain,
+			'descChain'       => $descChain,
 		];
 		$config->js('SeoNeo', $jsConfig);
 	}
@@ -1159,6 +1167,124 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	// ────────────────────────────────────────────────────────────────────
 	//  Smart-map
 	// ────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Return the full fallback chain for a given key (title or description)
+	 * as an ordered array of step descriptors. Each step has:
+	 *
+	 *   label      — human-readable field name or source label
+	 *   fieldName  — raw config field name (may include * prefix or dots)
+	 *   value      — the resolved string value for this step ('' if empty)
+	 *   winner     — true for the step that would actually be used
+	 *   type       — 'primary' | 'smart_map' | 'template_default' | 'page_title'
+	 *   inheritable — true when the field carries a * ancestor-walk prefix
+	 *
+	 * The chain mirrors the exact resolution order of getTitle() / getDescription()
+	 * so the UI can show precisely which field is being used.
+	 */
+	public function getSmartMapChain(Page $page, string $key): array {
+		$steps = [];
+		$winnerFound = false;
+
+		$markWinner = function(array &$step) use (&$winnerFound) {
+			if(!$winnerFound && $step['value'] !== '') {
+				$step['winner'] = true;
+				$winnerFound = true;
+			}
+		};
+
+		// Step 1: primary SEO field
+		$primaryField = $this->get('role_' . $key) ?: ('seoneo_' . $key);
+		$primaryValue = $this->readField($page, $primaryField);
+		$step = [
+			'label'      => $primaryField,
+			'fieldName'  => $primaryField,
+			'value'      => $primaryValue,
+			'winner'     => false,
+			'type'       => 'primary',
+			'inheritable' => false,
+		];
+		$markWinner($step);
+		$steps[] = $step;
+
+		if($winnerFound) return $steps;
+
+		// Step 2: smart-map fields
+		$map = $this->getSmartMap();
+		if(isset($map[$key]) && is_array($map[$key])) {
+			foreach($map[$key] as $rawField) {
+				$rawField = trim($rawField);
+				if($rawField === '') continue;
+
+				$inheritable = false;
+				$fieldName = $rawField;
+				if(strncmp($rawField, '*', 1) === 0) {
+					$inheritable = true;
+					$fieldName = ltrim(substr($rawField, 1));
+				}
+
+				$val = $this->readSmartMapValue($page, $fieldName);
+
+				// Ancestor-walk: try parents if the * prefix is set and page value is empty
+				$fromAncestor = false;
+				if($val === '' && $inheritable) {
+					foreach($page->parents()->reverse() as $ancestor) {
+						if(!$ancestor || !$ancestor->id) continue;
+						$val = $this->readSmartMapValue($ancestor, $fieldName);
+						if($val !== '') { $fromAncestor = true; break; }
+					}
+				}
+
+				$label = $fieldName;
+				if($inheritable) $label = $fieldName . ($fromAncestor ? ' (inherited)' : ' (inheritable)');
+
+				$step = [
+					'label'      => $label,
+					'fieldName'  => $rawField,
+					'value'      => $val,
+					'winner'     => false,
+					'type'       => 'smart_map',
+					'inheritable' => $inheritable,
+				];
+				$markWinner($step);
+				$steps[] = $step;
+
+				if($winnerFound) return $steps;
+			}
+		}
+
+		// Step 3: template default
+		$tplDefault = $this->renderTemplateDefault($page, $key);
+		$step = [
+			'label'      => 'template default',
+			'fieldName'  => 'template_default',
+			'value'      => $tplDefault,
+			'winner'     => false,
+			'type'       => 'template_default',
+			'inheritable' => false,
+		];
+		$markWinner($step);
+		$steps[] = $step;
+
+		if($winnerFound) return $steps;
+
+		// Step 4: page title (title key only)
+		if($key === 'title') {
+			$pageTitle = (string) $page->title;
+			$step = [
+				'label'      => 'page title',
+				'fieldName'  => 'title',
+				'value'      => $pageTitle,
+				'winner'     => false,
+				'type'       => 'page_title',
+				'inheritable' => false,
+			];
+			$markWinner($step);
+			$steps[] = $step;
+		}
+
+		return $steps;
+	}
 
 	public function ___resolveSmartMap(Page $page, string $key): string {
 		$map = $this->getSmartMap();

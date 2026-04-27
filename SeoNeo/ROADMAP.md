@@ -4,9 +4,19 @@ Ideas and planned improvements focused on making the page-editing experience cle
 
 ---
 
+## Pro tier / licensing notes
+
+There is currently no pro/licensing mechanism in the module. It is MIT licensed with no feature flags or key validation.
+
+Features marked **[Pro candidate]** are built as standard features first (logic stays in `SeoNeo.module.php`, UI in conditionally-loadable JS/CSS files). This makes them easy to move into a separate `SeoNeoPro` companion module later without restructuring the codebase.
+
+**Recommended commercial architecture when ready:** a separate paid `SeoNeoPro` module that hooks into `SeoNeo`. The free module stays MIT; the pro module carries its own license. This is the standard approach for commercial ProcessWire modules and is more defensible than a license-key flag inside an open-source codebase.
+
+---
+
 ## In Progress
 
-### Fallback chain visualization
+### Fallback chain visualization **[Pro candidate]**
 **Files:** `SeoNeo.module.php`, `SeoNeo.js`, `SeoNeo.css`
 
 Right now the SEO tab shows a blank title or description field with no explanation of where the resolved value is coming from. Editors have to visit the module config page to understand the smart-map chain.
@@ -26,7 +36,7 @@ Right now the SEO tab shows a blank title or description field with no explanati
 
 ## Planned
 
-### Noindex / nofollow prominence warning
+### Noindex / nofollow prominence warning **[Pro candidate]**
 **Files:** `SeoNeo.js`, `SeoNeo.css`
 
 When a page is set to noindex, the only indication is the checkbox and a quiet note in the effective-values panel. A page being accidentally deindexed is a silent, high-severity mistake.
@@ -38,7 +48,7 @@ When a page is set to noindex, the only indication is the checkbox and a quiet n
 
 ---
 
-### Social card (OG) preview in admin tab
+### Social card (OG) preview in admin tab **[Pro candidate]**
 **Files:** `InputfieldSeoNeoPreview.module.php`, `SeoNeo.js`, `SeoNeo.css`
 
 The SERP preview already shows how the page appears in Google search results. There is currently no equivalent for social sharing — editors need to use a third-party tool (or visit the frontend SeoNeoBar) to check how the page will look when shared on Facebook, LinkedIn, or X.
@@ -78,7 +88,7 @@ The URL line in the SERP preview card is rendered server-side once on page load.
 
 ---
 
-### Duplicate title / description detection
+### Duplicate title / description detection **[Pro candidate]**
 **Files:** `SeoNeo.module.php` (new API endpoint), `SeoNeo.js`, `SeoNeo.css`
 
 Duplicate meta titles across pages are one of the most common SEO mistakes and one of the hardest to catch while editing a single page. There is currently no per-page indication.
@@ -94,7 +104,7 @@ Duplicate meta titles across pages are one of the most common SEO mistakes and o
 
 ---
 
-### "Suggest from content" for description
+### "Suggest from content" for description **[Pro candidate]**
 **Files:** `SeoNeo.module.php` (or small endpoint), `SeoNeo.js`, `SeoNeo.css`
 
 Editors frequently leave description blank not because they don't want one but because writing a separate 160-character summary feels like additional effort on top of the main content. A one-click suggestion reduces that friction.
@@ -107,7 +117,7 @@ Editors frequently leave description blank not because they don't want one but b
 
 ---
 
-### Focus keyword
+### Focus keyword **[Pro candidate]**
 **Files:** `SeoNeo.module.php`, `SeoNeo.js`, `SeoNeo.css`, optionally a new lightweight PW field
 
 Editors arriving from tools like Yoast or RankMath expect a focus keyword input with basic checks. Done superficially this becomes noise; done with discipline it gives editors a concrete checklist.
