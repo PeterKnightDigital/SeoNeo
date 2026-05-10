@@ -2,15 +2,17 @@
 
 Ideas and planned improvements focused on making the page-editing experience clearer and more self-contained. All items are scoped to the admin editor and/or the frontend SeoNeo bar; none require changes to the core SEO output logic.
 
+**Companion document:** the strategic / ecosystem-wide backlog for SEO NEO lives at the workspace root in `SEO-NEO-FEATURE-BACKLOG.md`. Section R there is the single source of truth for what's free vs paid across the whole project; everything tagged `[Pro candidate]` in this file is summarised in that section's Paid list.
+
 ---
 
 ## Pro tier / licensing notes
 
 There is currently no pro/licensing mechanism in the module. It is MIT licensed with no feature flags or key validation.
 
-Features marked **[Pro candidate]** are built as standard features first (logic stays in `SeoNeo.module.php`, UI in conditionally-loadable JS/CSS files). This makes them easy to move into a separate `SeoNeoPro` companion module later without restructuring the codebase.
+Features marked **[Pro candidate]** are built as standard features first (logic stays in `SeoNeo.module.php`, UI in conditionally-loadable JS/CSS files). This makes them easy to move into a paid companion later without restructuring the codebase.
 
-**Recommended commercial architecture when ready:** a separate paid `SeoNeoPro` module that hooks into `SeoNeo`. The free module stays MIT; the pro module carries its own license. This is the standard approach for commercial ProcessWire modules and is more defensible than a license-key flag inside an open-source codebase.
+**Architectural shape of the paid offering:** intentionally **deferred** — see the *Deferred architectural decisions* block at the end of section R in `SEO-NEO-FEATURE-BACKLOG.md`. Open questions include single bundle vs split companions, license model, naming, and whether any items move to a freemium tier. The build-as-standard-feature-first approach keeps all those options open until 1.0 has been in the wild long enough to give us a real signal.
 
 ---
 
