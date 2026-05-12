@@ -1986,6 +1986,21 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public function getModuleConfigInputfields(InputfieldWrapper $inputfields) {
 		$modules = $this->wire('modules');
 
+		// -- Admin styling ------------------------------------------------
+		// Adds a little vertical breathing room between each fieldset on the
+		// SEO NEO module-config screen. Scoped via a SEO NEO-specific class
+		// on a hidden marker so it can't leak to other module configs.
+		$styleHack = '<style>'
+			. '.Inputfield_seoneo_admin_styles ~ li.Inputfield.InputfieldFieldset { margin-bottom: 1.25rem; }'
+			. '.Inputfield_seoneo_admin_styles ~ li.Inputfield.InputfieldFieldset:last-child { margin-bottom: 0; }'
+			. '.Inputfield_seoneo_admin_styles { display: none; }'
+			. '</style>';
+		$f = $modules->get('InputfieldMarkup');
+		$f->name = 'seoneo_admin_styles';
+		$f->markupText = $styleHack;
+		$f->skipLabel = Inputfield::skipLabelBlank;
+		$inputfields->add($f);
+
 		// -- Site identity ------------------------------------------------
 
 		$f = $modules->get('InputfieldText');
