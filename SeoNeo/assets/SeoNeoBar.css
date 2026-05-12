@@ -899,33 +899,33 @@ body.pkd-seoneo-body-offset {
   align-items: baseline;
   gap: var(--pkd-seoneo-sp-3);
   padding: var(--pkd-seoneo-sp-1) 0;
-  font-size: var(--pkd-seoneo-fs-sm);
+  font-size: var(--pkd-seoneo-font-sm);
 }
 
 .pkd-seoneo-kv__key {
   flex: 0 0 auto;
   min-width: 90px;
-  color: var(--pkd-seoneo-color-muted);
+  color: var(--pkd-seoneo-drawer-text-muted);
   text-transform: uppercase;
-  font-size: var(--pkd-seoneo-fs-xs);
+  font-size: var(--pkd-seoneo-font-xs);
   letter-spacing: 0.04em;
-  font-weight: 600;
+  font-weight: var(--pkd-seoneo-weight-semibold);
 }
 
 .pkd-seoneo-kv__value {
   flex: 1 1 auto;
-  color: var(--pkd-seoneo-color-fg);
+  color: var(--pkd-seoneo-drawer-text);
   word-break: break-word;
 }
 
 .pkd-seoneo-kv__value--missing {
-  color: var(--pkd-seoneo-color-muted);
+  color: var(--pkd-seoneo-drawer-text-muted);
   font-style: italic;
 }
 
 .pkd-seoneo-kv__sub {
-  color: var(--pkd-seoneo-color-muted);
-  font-size: var(--pkd-seoneo-fs-xs);
+  color: var(--pkd-seoneo-drawer-text-muted);
+  font-size: var(--pkd-seoneo-font-xs);
   margin-left: 4px;
 }
 
@@ -944,18 +944,18 @@ body.pkd-seoneo-body-offset {
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border: 1px solid var(--pkd-seoneo-color-border);
-  border-radius: 999px;
-  background: var(--pkd-seoneo-color-card);
-  color: var(--pkd-seoneo-color-link);
-  font-size: var(--pkd-seoneo-fs-sm);
+  border: 1px solid var(--pkd-seoneo-drawer-border);
+  border-radius: var(--pkd-seoneo-r-full);
+  background: var(--pkd-seoneo-color-light-50);
+  color: var(--pkd-seoneo-accent);
+  font-size: var(--pkd-seoneo-font-sm);
   text-decoration: none;
-  transition: background 120ms, border-color 120ms;
+  transition: background var(--pkd-seoneo-t-fast), border-color var(--pkd-seoneo-t-fast);
 }
 
 .pkd-seoneo-tools__link:hover {
-  background: var(--pkd-seoneo-color-hover);
-  border-color: var(--pkd-seoneo-color-link);
+  background: var(--pkd-seoneo-color-light-100);
+  border-color: var(--pkd-seoneo-accent);
   text-decoration: none;
 }
 
@@ -965,14 +965,14 @@ body.pkd-seoneo-body-offset {
    ───────────────────────────────────────────────────────────────────── */
 
 .pkd-seoneo-schema__node {
-  border: 1px solid var(--pkd-seoneo-color-border);
-  border-radius: var(--pkd-seoneo-radius-sm);
+  border: 1px solid var(--pkd-seoneo-drawer-border);
+  border-radius: var(--pkd-seoneo-r-sm);
   margin-bottom: var(--pkd-seoneo-sp-2);
-  background: var(--pkd-seoneo-color-card);
+  background: var(--pkd-seoneo-color-white);
 }
 
 .pkd-seoneo-schema__node[open] {
-  border-color: var(--pkd-seoneo-color-link);
+  border-color: var(--pkd-seoneo-accent);
 }
 
 .pkd-seoneo-schema__summary {
@@ -991,8 +991,8 @@ body.pkd-seoneo-body-offset {
 .pkd-seoneo-schema__summary::before {
   content: '▸';
   font-size: 10px;
-  color: var(--pkd-seoneo-color-muted);
-  transition: transform 120ms;
+  color: var(--pkd-seoneo-drawer-text-muted);
+  transition: transform var(--pkd-seoneo-t-fast);
 }
 
 .pkd-seoneo-schema__node[open] > .pkd-seoneo-schema__summary::before {
@@ -1000,14 +1000,14 @@ body.pkd-seoneo-body-offset {
 }
 
 .pkd-seoneo-schema__type {
-  font-weight: 600;
-  color: var(--pkd-seoneo-color-fg);
-  font-size: var(--pkd-seoneo-fs-sm);
+  font-weight: var(--pkd-seoneo-weight-semibold);
+  color: var(--pkd-seoneo-drawer-text);
+  font-size: var(--pkd-seoneo-font-sm);
 }
 
 .pkd-seoneo-schema__name {
-  color: var(--pkd-seoneo-color-muted);
-  font-size: var(--pkd-seoneo-fs-sm);
+  color: var(--pkd-seoneo-drawer-text-muted);
+  font-size: var(--pkd-seoneo-font-sm);
   flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1015,9 +1015,9 @@ body.pkd-seoneo-body-offset {
 }
 
 .pkd-seoneo-schema__doc {
-  color: var(--pkd-seoneo-color-link);
+  color: var(--pkd-seoneo-accent);
   text-decoration: none;
-  font-size: var(--pkd-seoneo-fs-sm);
+  font-size: var(--pkd-seoneo-font-sm);
   padding: 0 4px;
 }
 
@@ -1028,12 +1028,12 @@ body.pkd-seoneo-body-offset {
 .pkd-seoneo-schema__code {
   margin: 0;
   padding: var(--pkd-seoneo-sp-3);
-  border-top: 1px solid var(--pkd-seoneo-color-border);
-  background: var(--pkd-seoneo-color-bg);
-  color: var(--pkd-seoneo-color-fg);
+  border-top: 1px solid var(--pkd-seoneo-drawer-border);
+  background: var(--pkd-seoneo-color-light-50);
+  color: var(--pkd-seoneo-drawer-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--pkd-seoneo-fs-xs);
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.4;
   overflow-x: auto;
   white-space: pre;
 }
