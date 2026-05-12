@@ -300,6 +300,78 @@ The bar adds `margin-bottom` to `<body>` so page content is never hidden behind 
 - ProcessWire 3.0.200+
 - PHP 8.1+
 
+## Changelog
+
+### SeoNeo 1.5.0 — fallback-chain label visualisation
+
+- The fallback-chain popover now pairs each step's human field label with
+  its machine name in brackets — e.g. *Meta Description
+  (seoneo_description) → Summary (summary) → Body (body)* — joined by a
+  downward arrow glyph so the resolution order reads as a flow.
+- The full chain is always shown (not truncated at the winning step), so
+  editors can see *why* a value won.
+- Duplicate fields are silently deduplicated and only shown at their
+  earliest position in the chain.
+- New per-step keys `labelText`, `displayName`, and `inheritedSuffix`
+  feed a new client-side label renderer and CSS layout.
+
+### SeoNeo 1.4.2 — per-language fallback chain
+
+- The fallback-chain icon and "Using: …" ghost text now appear next to
+  *each* language input on multilingual sites, not just the default
+  language. The icon stays visible at all times; the "Using: …" text
+  only appears when a fallback is actually winning for that language.
+- The chain is computed per language: the popover for the German input
+  shows German values, the English input shows English values, etc.
+- The "Use this" button now writes to the correct language input rather
+  than always targeting the default language.
+- Server-side: each chain step carries a `valuesByLang` map; client-side:
+  steps are re-evaluated against live DOM values for the active language.
+
+### SeoNeo 1.4.1 — fallback-chain popover portal
+
+- Fixes a bug where the field-mapping popover was clipped by ancestor
+  `overflow` rules inside the Inputfield wrap, producing an in-field
+  scrollbar instead of a free-floating popover.
+- The popover now uses a portal pattern: it's appended to `document.body`
+  with `position: fixed`, and JS positions it relative to the trigger
+  button's viewport rectangle, with flip and clamp logic so it stays on
+  screen near viewport edges.
+- The popover closes on viewport scroll and resize, and stale popovers
+  are defensively cleaned up on AJAX reloads of the Inputfield.
+
+### SeoNeo 1.4.0
+
+- Fallback-chain visualisation (link-icon popover next to each SEO field
+  that resolves through the smart map). Pro candidate feature.
+
+### SeoNeo 1.3.x and earlier
+
+- 1.3.0 — OG image resolver with 4-step fallback chain
+  (`seoneo_og_image` → smart map → page images → site default).
+- 1.2.x — Smart map for inheritable fields, OG tags, cache busting,
+  refreshed admin UI.
+- 1.1.x — Open Graph tags, SERP preview with site name + separator,
+  canonical URL placeholders, meta keywords field.
+- 1.0.0 — Initial release: coordinator SEO module emitting meta, robots,
+  and canonical tags from native PW fields.
+
+### SeoNeoBar 1.1.1 — canonical-context spoof
+
+- Fixes a bug where the bar's canonical row reflected its own AJAX
+  endpoint URL (e.g. `/walks/seoneo-bar-data/`) instead of the page the
+  bar was opened on, and the "Edit page" button linked to a broken
+  JSON endpoint. SeoNeoBar now snapshots the live page's URL segments
+  and page number when injecting the bar, ships them with the AJAX
+  request, and temporarily spoofs `$input` in the data handler so
+  SeoNeo's canonical resolver sees the *page's* URL context, not the
+  AJAX endpoint's.
+
+### SeoNeoBar 1.1.0
+
+- Added Links and Images panels.
+- Refreshed SERP preview behaviour to keep parity with the SEO tab.
+
 ## License
 
 MIT
