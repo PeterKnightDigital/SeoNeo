@@ -370,6 +370,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 		$canonicalField = $this->get('role_canonical') ?: 'seoneo_canonical';
 
+		$languages = $this->wire('languages');
+		$multilang = $languages && count($languages) > 1;
+		$defaultLanguageId = 0;
+		if($multilang) {
+			$defaultLang = $languages->getDefault();
+			if($defaultLang) $defaultLanguageId = (int) $defaultLang->id;
+		}
+
 		$jsConfig = [
 			'roleTitle'       => $this->get('role_title') ?: 'seoneo_title',
 			'roleDescription' => $this->get('role_description') ?: 'seoneo_description',
@@ -383,6 +391,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'counterDescAmber'   => (int) $this->counter_desc_amber,
 			'titleChain'      => $titleChain,
 			'descChain'       => $descChain,
+			'multilang'       => $multilang,
+			'defaultLanguageId' => $defaultLanguageId,
 		];
 		$config->js('SeoNeo', $jsConfig);
 	}
@@ -1283,7 +1293,67 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			$steps[] = $step;
 		}
 
+		// Per-language value snapshots.
+		//
+		// The shape of the chain (steps, order, types) is language-agnostic:
+		// the smart map is configured once per site, not per language. Only
+		// the VALUES at each step differ between languages. On multilingual
+		// sites we compute a value for every step in every active language
+		// and attach it as `valuesByLang` so the JS can render the chain for
+		// whichever language tab the editor is currently on, and so the
+		// "Use this" promote button can target the matching language input.
+		//
+		// On monolingual sites this is a no-op; the JS falls back to `value`.
+		$languages = $this->wire('languages');
+		if($languages && count($languages) > 1) {
+			$user = $this->wire('user');
+			$origLang = $user->language ?? null;
+			foreach($steps as &$step) {
+				$step['valuesByLang'] = [];
+				foreach($languages as $lang) {
+					$user->language = $lang;
+					$step['valuesByLang'][$lang->id] = $this->resolveChainStepValue($page, $key, $step);
+				}
+			}
+			unset($step);
+			if($origLang) $user->language = $origLang;
+		}
+
 		return $steps;
+	}
+
+	/**
+	 * Resolve a single chain-step's value for the page's currently-active
+	 * language. Used by getSmartMapChain() when snapshotting per-language
+	 * values for the editor UI; kept narrow on purpose so the snapshot pass
+	 * reuses the same resolution rules as the live-render pass.
+	 */
+	protected function resolveChainStepValue(Page $page, string $key, array $step): string {
+		switch($step['type']) {
+			case 'primary':
+				return $this->readField($page, $step['fieldName']);
+
+			case 'smart_map':
+				$rawField = $step['fieldName'];
+				$inheritable = strncmp($rawField, '*', 1) === 0;
+				$fieldName = $inheritable ? ltrim(substr($rawField, 1)) : $rawField;
+				$val = $this->readSmartMapValue($page, $fieldName);
+				if($val === '' && $inheritable) {
+					foreach($page->parents()->reverse() as $ancestor) {
+						if(!$ancestor || !$ancestor->id) continue;
+						$val = $this->readSmartMapValue($ancestor, $fieldName);
+						if($val !== '') break;
+					}
+				}
+				return $val;
+
+			case 'template_default':
+				return $this->renderTemplateDefault($page, $key);
+
+			case 'page_title':
+				return (string) $page->title;
+		}
+		return '';
 	}
 
 	public function ___resolveSmartMap(Page $page, string $key): string {

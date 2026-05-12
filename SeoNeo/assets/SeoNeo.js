@@ -257,19 +257,98 @@
 		});
 	}
 
-	function injectChainIcon(fieldName, chain) {
+	// Extract the PW language suffix from an Inputfield input's `name`
+	// attribute. PW renders multilang fields as `<name>` for the default
+	// language and `<name>__<langId>` for non-default languages, e.g.
+	// `seoneo_description` (default) and `seoneo_description__1011` (DE).
+	// Returns the suffix WITH the leading double-underscore (or '' for
+	// default) so callers can build matching selectors directly.
+	function getLangSuffix(input) {
+		if (!input || !input.name) return '';
+		var m = input.name.match(/(__\d+)$/);
+		return m ? m[1] : '';
+	}
+
+	function getLangIdForInput(input) {
+		if (!input || !input.name) return cfg.defaultLanguageId || 0;
+		var m = input.name.match(/__(\d+)$/);
+		return m ? parseInt(m[1], 10) : (cfg.defaultLanguageId || 0);
+	}
+
+	// Read a chain step's value at a given language context. Prefers the
+	// live DOM input for the step's source field (so the popover reflects
+	// what the editor has just typed but not yet saved) and falls back to
+	// the server-pre-computed valuesByLang map for steps that aren't in
+	// the editor DOM (template defaults, ancestor-walked smart-map values).
+	function readStepValueForLanguage(step, langSuffix, langId) {
+		var live = '';
+		if (step.type === 'primary' || step.type === 'page_title' ||
+			(step.type === 'smart_map' && !step.fromAncestor)) {
+			var raw = step.fieldName || '';
+			// Strip the leading `*` ancestor-walk marker from smart-map names
+			var cleanName = raw.replace(/^\*/, '');
+			var input = d.querySelector('[name="' + cleanName + langSuffix + '"]');
+			if (input) live = (input.value || '').trim();
+		}
+		if (live !== '') return live;
+		if (step.valuesByLang && step.valuesByLang[langId] !== undefined) {
+			return step.valuesByLang[langId];
+		}
+		return step.value || '';
+	}
+
+	// Build a per-language live snapshot of the chain: same shape as the
+	// server-sent chain, with `value` replaced by this language's value and
+	// `winner` recomputed (first non-empty step wins).
+	function buildLiveChain(chain, langSuffix, langId) {
+		var live = chain.map(function(step) {
+			var s = Object.assign({}, step);
+			s.value = readStepValueForLanguage(step, langSuffix, langId);
+			s.winner = false;
+			return s;
+		});
+		for (var i = 0; i < live.length; i++) {
+			if (live[i].value !== '') { live[i].winner = true; break; }
+		}
+		return live;
+	}
+
+	function injectChainForField(fieldName, chain) {
 		if (!chain || !chain.length) return;
 
 		var wrap = d.getElementById('wrap_Inputfield_' + fieldName);
 		if (!wrap) return;
 
-		// Don't double-inject
-		if (wrap.querySelector('.seoneo-chain-btn')) return;
+		// Don't double-inject — guard on the row, not the button, because the
+		// label no longer carries the chain icon.
+		if (wrap.querySelector('.seoneo-chain-row')) return;
 
-		var label = wrap.querySelector('label');
-		if (!label) return;
+		var primaryInputs = findInputForFieldLanguage(fieldName);
+		if (!primaryInputs.length) return;
 
-		// ── Icon button ──────────────────────────────────
+		primaryInputs.forEach(function(primaryInput) {
+			injectChainRow(wrap, fieldName, chain, primaryInput);
+		});
+	}
+
+	// Inject one "Using: … (chain icon)" row directly after a primary input.
+	// Each language tab has its own primary input, so each language gets its
+	// own row, its own icon, and its own popover scoped to that language's
+	// values. The smart-map shape is global (same fields in same order); only
+	// the values differ. See LNT-006 in lakesandtrails.go/SEO-NEO-FINDINGS.md.
+	function injectChainRow(wrap, fieldName, chain, primaryInput) {
+		var langSuffix = getLangSuffix(primaryInput);
+		var langId = getLangIdForInput(primaryInput);
+
+		var row = d.createElement('div');
+		row.className = 'seoneo-chain-row';
+		row.setAttribute('data-field', fieldName);
+		row.setAttribute('data-lang', langId);
+
+		var ghost = d.createElement('span');
+		ghost.className = 'seoneo-chain-ghost';
+		ghost.hidden = true;
+
 		var btn = d.createElement('button');
 		btn.type = 'button';
 		btn.className = 'seoneo-chain-btn';
@@ -277,22 +356,39 @@
 		btn.setAttribute('aria-expanded', 'false');
 		btn.innerHTML = SVG_CHAIN;
 
-		// ── Popover ──────────────────────────────────────
 		var popover = d.createElement('div');
 		popover.className = 'seoneo-chain-popover';
 		popover.setAttribute('role', 'dialog');
 		popover.setAttribute('aria-label', 'Fallback chain for ' + fieldName);
 		popover.setAttribute('data-fieldname', fieldName);
+		popover.setAttribute('data-lang', langId);
 		popover.hidden = true;
-		popover.innerHTML = '<div class="seoneo-chain-header">Fallback chain</div>' + buildPopoverHtml(chain);
-
 		btn._seoneoPopover = popover;
+
+		// Update the "Using: …" ghost text based on the live winner. The icon
+		// itself stays visible at all times (so editors can always inspect
+		// the chain); only the explanatory ghost text hides when the primary
+		// field is filled, because there's no fallback to explain.
+		function updateGhost() {
+			var live = buildLiveChain(chain, langSuffix, langId);
+			var winner = null;
+			for (var i = 0; i < live.length; i++) { if (live[i].winner) { winner = live[i]; break; } }
+			if (winner && winner.type !== 'primary') {
+				ghost.hidden = false;
+				ghost.textContent = 'Using: ' + winner.label;
+			} else {
+				ghost.hidden = true;
+			}
+		}
 
 		btn.addEventListener('click', function(e) {
 			e.stopPropagation();
 			var isOpen = btn.getAttribute('aria-expanded') === 'true';
 			closeOpenPopover();
 			if (!isOpen) {
+				var live = buildLiveChain(chain, langSuffix, langId);
+				popover.innerHTML = '<div class="seoneo-chain-header">Fallback chain</div>' + buildPopoverHtml(live);
+				attachPromoteHandlers(popover, primaryInput, live);
 				btn.setAttribute('aria-expanded', 'true');
 				popover.hidden = false;
 				positionPopoverFor(btn, popover);
@@ -300,71 +396,43 @@
 			}
 		});
 
-		// Wire up promote buttons
-		var primaryInputs = findInputForFieldLanguage(fieldName);
-		var primaryInput = primaryInputs[0] || null;
-		attachPromoteHandlers(popover, primaryInput, chain);
-
-		// Insert button inside the label (so it sits next to the field title),
-		// but portal the popover to <body> so no ancestor with overflow:hidden,
-		// overflow:auto, transform, filter, or contain can clip or scroll it.
-		// The PW Uikit admin theme wraps every Inputfield in stacks that do
-		// exactly that, which is what caused the popover to render with a
-		// scrollbar instead of floating above the field. Position is then set
-		// at open time from the button's viewport rect.
-		label.appendChild(btn);
-
-		// Clean up any stale popover for this field name (defensive: handles
-		// AJAX-reloaded inputfields where the wrap was destroyed and rebuilt
-		// but the orphaned body-portalled popover wasn't garbage collected).
-		var stale = d.body.querySelectorAll('.seoneo-chain-popover[data-fieldname="' + fieldName + '"]');
-		for (var s = 0; s < stale.length; s++) stale[s].parentNode.removeChild(stale[s]);
-
-		d.body.appendChild(popover);
-
-		// ── Ghost text (below the input) ─────────────────
-		injectGhostText(wrap, fieldName, chain, primaryInput);
-	}
-
-	function getWinner(chain) {
-		for (var i = 0; i < chain.length; i++) {
-			if (chain[i].winner) return chain[i];
-		}
-		return null;
-	}
-
-	function injectGhostText(wrap, fieldName, chain, primaryInput) {
-		// Ghost text shows only when primary field is empty
-		var winner = getWinner(chain);
-		if (!winner || winner.type === 'primary') return; // primary is filled or no winner
-
-		var ghost = d.createElement('div');
-		ghost.className = 'seoneo-chain-ghost';
-		ghost.setAttribute('data-field', fieldName);
-
-		function updateGhost() {
-			var currentVal = primaryInput ? primaryInput.value.trim() : '';
-			if (currentVal) {
-				ghost.hidden = true;
-				return;
-			}
-			ghost.hidden = false;
-			ghost.textContent = 'Using: ' + winner.label;
-		}
-
+		// Wire ghost updates: most importantly the primary input itself, plus
+		// the smart-map source inputs in this language (so changing Summary
+		// while editing the German tab refreshes the "Using: …" hint).
 		if (primaryInput) {
 			primaryInput.addEventListener('input', updateGhost);
 			primaryInput.addEventListener('change', updateGhost);
 		}
+		chain.forEach(function(step) {
+			if (step.type === 'smart_map' && !step.fromAncestor) {
+				var cleanName = (step.fieldName || '').replace(/^\*/, '');
+				var src = d.querySelector('[name="' + cleanName + langSuffix + '"]');
+				if (src && src !== primaryInput) {
+					src.addEventListener('input', updateGhost);
+					src.addEventListener('change', updateGhost);
+				}
+			}
+		});
 
-		// Insert after the last input/textarea in the wrap
-		var inputs = wrap.querySelectorAll('input[type="text"], textarea');
-		var lastInput = inputs[inputs.length - 1];
-		if (lastInput && lastInput.parentNode) {
-			lastInput.parentNode.insertBefore(ghost, lastInput.nextSibling);
+		row.appendChild(ghost);
+		row.appendChild(btn);
+
+		// Insert the row as the next sibling of the primary input. For
+		// multilang fields that means the row lives inside the same langTab_*
+		// container as the input it describes, so showing / hiding tabs
+		// shows / hides the matching row for free.
+		if (primaryInput.parentNode) {
+			primaryInput.parentNode.insertBefore(row, primaryInput.nextSibling);
 		} else {
-			wrap.appendChild(ghost);
+			wrap.appendChild(row);
 		}
+
+		// Clean up any stale popovers for this field + language (defensive:
+		// AJAX-reloaded inputfields would otherwise leave orphans in <body>).
+		var staleSel = '.seoneo-chain-popover[data-fieldname="' + fieldName + '"][data-lang="' + langId + '"]';
+		var stale = d.body.querySelectorAll(staleSel);
+		for (var s = 0; s < stale.length; s++) stale[s].parentNode.removeChild(stale[s]);
+		d.body.appendChild(popover);
 
 		updateGhost();
 	}
@@ -374,10 +442,10 @@
 		var descField  = cfg.roleDescription || 'seoneo_description';
 
 		if (cfg.titleChain && cfg.titleChain.length) {
-			injectChainIcon(titleField, cfg.titleChain);
+			injectChainForField(titleField, cfg.titleChain);
 		}
 		if (cfg.descChain && cfg.descChain.length) {
-			injectChainIcon(descField, cfg.descChain);
+			injectChainForField(descField, cfg.descChain);
 		}
 	}
 

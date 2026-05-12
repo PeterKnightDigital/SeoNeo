@@ -116,14 +116,29 @@
 
 /* ── Fallback chain ───────────────────────────────────────────────── */
 
-/* Chain icon button — sits inline after the field label text */
+/* Per-language chain row — one is injected directly after each primary
+ * input (one per language tab for multilang fields). Holds the "Using: …"
+ * ghost text and the chain-link icon button. Living inside the same DOM
+ * subtree as the input it describes means the row is visible exactly when
+ * its language tab is active, with no JS tab-switching wiring required. */
+.seoneo-chain-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 3px;
+	min-height: 18px;
+}
+
+/* Chain icon button — sits inline next to the "Using: …" ghost text inside
+ * the row. The icon is always visible (so editors can always inspect the
+ * resolution chain); the ghost text next to it is hidden when the primary
+ * field has its own value (i.e. nothing is being inherited to explain). */
 .seoneo-chain-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	width: 18px;
 	height: 18px;
-	margin-left: 6px;
 	padding: 0;
 	border: none;
 	border-radius: 3px;
@@ -293,11 +308,12 @@
 	display: inline;
 }
 
-/* Ghost text — shows below the input when the primary field is empty */
+/* Ghost text — shows "Using: <field>" inside the per-language chain row
+ * when a fallback is winning (i.e. the primary field is empty in this
+ * language). Hidden when the primary has its own value. */
 .seoneo-chain-ghost {
 	font-size: 0.8em;
 	color: #9ca3af;
-	margin-top: 3px;
 	font-style: italic;
 }
 
