@@ -65,7 +65,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.5.1',
+			'version'  => '1.5.2',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -94,6 +94,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'role_nofollow'    => 'seoneo_nofollow',
 			'noindex_unpublished' => 1,
 			'noindex_hidden'   => 0,
+			'noindex_sitewide' => 0,
+			'nofollow_sitewide' => 0,
 			'smart_map_text'   => "title=headline,title\ndescription=summary,body",
 			'template_defaults_text' => '',
 			'custom_tags_text' => '',
@@ -560,6 +562,13 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		}
 		if(!$noindex && (int) $this->get('noindex_hidden') && method_exists($page, 'isHidden') && $page->isHidden()) {
 			$noindex = 1;
+		}
+
+		if(!$noindex && (int) $this->get('noindex_sitewide')) {
+			$noindex = 1;
+		}
+		if(!$nofollow && (int) $this->get('nofollow_sitewide')) {
+			$nofollow = 1;
 		}
 
 		return ($noindex ? 'noindex' : 'index') . ',' . ($nofollow ? 'nofollow' : 'follow');
@@ -1705,6 +1714,24 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->description = $this->_('Hidden pages are still publicly viewable — they are simply omitted from `$page->children()` listings. Enabling this toggle treats Hidden as a stronger "not for search" signal. Off by default.');
 		$f->columnWidth = 50;
 		if((int) $this->get('noindex_hidden')) $f->attr('checked', 'checked');
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldCheckbox');
+		$f->name = 'noindex_sitewide';
+		$f->label = $this->_('Site-wide noindex');
+		$f->label2 = $this->_('Force `noindex` on every page, regardless of per-page settings');
+		$f->description = $this->_('Belt-and-braces switch for staging, screenshot labs, and pre-launch sites. When enabled, `<meta name="robots">` will always include `noindex` — overriding the per-page Noindex checkbox and the Hidden/Unpublished auto-noindex toggles above. Off by default. Pair with the *Site-wide nofollow* checkbox if you also want to stop crawlers following links.');
+		$f->columnWidth = 50;
+		if((int) $this->get('noindex_sitewide')) $f->attr('checked', 'checked');
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldCheckbox');
+		$f->name = 'nofollow_sitewide';
+		$f->label = $this->_('Site-wide nofollow');
+		$f->label2 = $this->_('Force `nofollow` on every page, regardless of per-page settings');
+		$f->description = $this->_('Companion to *Site-wide noindex*. When enabled, `<meta name="robots">` will always include `nofollow`. Off by default. Useful for staging environments where you do not want search engines following links into the unfinished site.');
+		$f->columnWidth = 50;
+		if((int) $this->get('nofollow_sitewide')) $f->attr('checked', 'checked');
 		$fs->add($f);
 
 		$inputfields->add($fs);
