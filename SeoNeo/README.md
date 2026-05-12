@@ -167,6 +167,43 @@ OG tags are generated automatically from the same data:
 - `twitter:site` and `twitter:creator` come from module config (the leading `@` is added automatically). Hook `___getTwitterCreator($page)` to return a per-page or per-author value
 - `twitter:title`, `twitter:description`, and `twitter:image` mirror the OG values for scrapers that don't fall back to `og:*`
 
+## Structured data (JSON-LD)
+
+SeoNeo emits a `<script type="application/ld+json">` block on every page containing a Schema.org `@graph` of inter-linked nodes. This is the structured-data format Google requires for rich results, sitelinks search box, and is increasingly important for AI search agents (Perplexity, Bing Copilot, ChatGPT search) that rely on Schema.org to understand site authorship and content.
+
+### Default graph composition
+
+- **Organization** (or `Person`, `LocalBusiness`, `NewsMediaOrganization`, `EducationalOrganization` per the **Publisher type** setting) — the site-wide publisher, with `name`, `url`, optional `logo`, `description`, and `sameAs` links.
+- **WebSite** — the site itself, with a `publisher` reference back to the Organization and the default-language `inLanguage`.
+- **WebPage** — the current page, with `name`, `description`, `url`, `inLanguage`, `isPartOf` (→ WebSite), `dateModified`, `datePublished`, and `primaryImageOfPage` (when an OG image resolves).
+- **Article** — added on pages whose template appears in **Article templates** (e.g. `journal_post,blog_post`), with `headline`, `description`, `image`, `datePublished`, `dateModified`, resolved `author`, publisher reference, and `inLanguage`.
+- **Person** — added on pages whose template appears in **Person templates** (defaults to `user` so PW User pages used as author bios are recognised), with `name`, `description`, `image`, `url`.
+- **BreadcrumbList** — added when **Emit BreadcrumbList** is enabled (on by default) and the page has at least one parent in the tree. Built from `$page->parents()` plus the page itself.
+
+Nodes are wired via canonical `@id` URIs, so a single graph represents the site, page, author, and breadcrumb trail without duplication.
+
+### Multilingual
+
+The per-page nodes (WebPage, Article, Person, BreadcrumbList) automatically translate with the page — they consume `$page->title`, `$page->httpUrl`, the smart-map fallback chain, and the new `getHreflangCode()` for `inLanguage`. The Organization and WebSite nodes get their `name` and `description` from two new per-language map fields (**Publisher name (per language)** and **Publisher description (per language)**), e.g.:
+
+```
+default=Lakes & Trails
+de=Seen & Pfade
+```
+
+The `@id` URIs for Organization and WebSite intentionally stay language-invariant — schema.org best practice is to identify the same entity across locales and translate only the descriptive properties.
+
+### Hooks
+
+Two hookable entry points let you extend or override the graph per site, per template, or per page:
+
+- `___getJsonLd(Page $page): array` — returns the `@graph` array. Hook this to add nodes (Event, Recipe, Product, Course, etc.), modify existing ones, or remove nodes you don't want.
+- `___renderJsonLd(Page $page): string` — returns the rendered `<script>` tag (or empty when JSON-LD is disabled or the graph is empty).
+
+### Disabling
+
+The **Emit JSON-LD** checkbox in module config is the master switch. When off, no `<script type="application/ld+json">` block is emitted regardless of the per-node templates.
+
 ## Custom meta tags
 
 ### Per-page custom HTML (`seoneo_custom`)
@@ -261,13 +298,16 @@ The optional **SeoNeoBar** module injects a discreet fixed bar at the bottom of 
 
 ### What it shows
 
-The bar has three panel buttons:
+The bar has six panel buttons:
 
 | Panel | Contents |
 |---|---|
-| **SEO & Meta** | Google SERP preview, resolved title + description with character counters, canonical URL, robots status badges (index/noindex, follow/nofollow), keywords, hreflang alternates |
+| **SEO & Meta** | Google SERP preview, resolved title + description with character counters, current URL + canonical (with `self-referencing` sublabel when they match), Lang, Word count, Publisher, robots status badges + X-Robots-Tag, Keywords, Hreflang alternates, plus a Tools row with one-click shortcuts to `robots.txt` and `sitemap.xml` |
 | **Headings** | Full H1–H6 tree extracted from the live page, indented and sized by level |
 | **Open Graph** | Live OG card preview (image, title, description, site name), individual tag values, Twitter/X card type |
+| **Schema** | JSON-LD `@graph` viewer: one collapsible block per node (Organization, WebSite, WebPage, BreadcrumbList, etc.), each with pretty-printed JSON and a `↗` link to the relevant `schema.org/{Type}` page. Footer shortcuts to the Google Rich Results Test and the Schema.org Validator |
+| **Links** | All anchor tags on the page, split into internal / external / hash-only / broken with badges and a unique-href count |
+| **Images** | All images on the page with their `alt` text status (good / warning / missing) |
 
 Each value shows **where it came from** — whether it came directly from a SeoNeo field, from a smart-map fallback field, or from a template default. This makes it easy to verify the fallback chain without guessing.
 
@@ -301,6 +341,26 @@ The bar adds `margin-bottom` to `<body>` so page content is never hidden behind 
 - PHP 8.1+
 
 ## Changelog
+
+### SeoNeo 1.6.0 — JSON-LD structured-data emitter
+
+- SeoNeo now emits a `<script type="application/ld+json">` block on every page containing a Schema.org `@graph` of inter-linked nodes (Organization, WebSite, WebPage, optional Article / Person, BreadcrumbList).
+- Wired via canonical `@id` URIs, so a single graph represents the site, page, author, and breadcrumb trail without duplication.
+- Per-page nodes are automatically translated by language; the Organization and WebSite nodes pick up `name` and `description` from two new per-language map fields (`jsonld_org_name_map` and `jsonld_org_description_map`) that mirror the existing `site_name_map` / `og_locale_map` pattern.
+- New module-config fieldset *Structured data (JSON-LD)* with: master toggle, publisher type (Organization, LocalBusiness, NewsMediaOrganization, EducationalOrganization, Person), publisher name + per-language map, URL, logo URL, description + per-language map, sameAs URLs, Article/Person template lists, default Article author (PageListSelect), BreadcrumbList toggle, and a pretty-print toggle.
+- Two new hookable entry points: `___getJsonLd(Page $page): array` to extend or override the graph, and `___renderJsonLd(Page $page): string` to control the rendered script tag.
+- Author resolution for Article nodes tries a `author` page-reference field first, falls back to the configured default author User page.
+
+### SeoNeo 1.5.2 — site-wide noindex / nofollow toggles
+
+- Two new checkboxes in the *Robots / indexing defaults* fieldset: **Site-wide noindex** and **Site-wide nofollow** force the directive into the rendered robots meta on every page, overriding per-page Noindex/Nofollow checkboxes and the Hidden/Unpublished auto-noindex toggles. Off by default.
+- Replaces the need for a downstream `addHookAfter('SeoNeo::getRobots', …)` workaround in `site/ready.php`. Such hooks don't fire for URL-hook AJAX endpoints (e.g. the SeoNeoBar's `/seoneo-bar-data/`), which made the bar disagree with the rendered HTML on sites using the workaround. Moving the logic into `getRobots()` itself fixes both surfaces.
+
+### SeoNeo 1.5.1 — multilingual hreflang code mapping
+
+- New hookable `___getHreflangCode(Language $lang): string` resolves the BCP47 code emitted in `<link rel="alternate" hreflang="…">`. Previously SeoNeo used `$lang->name` directly, so the default language (system-locked under the name `default` in PW) produced `hreflang="default"` — not a valid BCP47 tag, ignored by Google.
+- Two new module-config fields under the Open Graph fieldset: **Default hreflang code** (default `en`) and **Hreflang map for languages** (textarea overrides like `default=en-GB`, `de=de-AT`).
+- SeoNeoBar's HREFLANG row consumes the same method, so the bar and the rendered `<head>` agree (no more `default — Default` in the bar UI).
 
 ### SeoNeo 1.5.0 — fallback-chain label visualisation
 
@@ -355,6 +415,25 @@ The bar adds `margin-bottom` to `<body>` so page content is never hidden behind 
   canonical URL placeholders, meta keywords field.
 - 1.0.0 — Initial release: coordinator SEO module emitting meta, robots,
   and canonical tags from native PW fields.
+
+### SeoNeoBar 1.3.0 — Schema panel + Publisher / X-Robots-Tag / Tools row
+
+- New **Schema** panel (icon: connected-dots graph) renders the page's JSON-LD `@graph` as an interactive disclosure list. One collapsible block per node with the type prominently displayed, the node's `name` / `headline` / `@id` as a subtitle, pretty-printed JSON inside, and a `↗` link to the relevant `schema.org/{Type}` page. A footer offers one-click shortcuts to the Google Rich Results Test and the Schema.org Validator pre-filled with the current page URL.
+- Overview-panel: new **Publisher** row reads the Organization/Person node from the JSON-LD graph (e.g. `Lakes & Trails (Organization)`); muted `Missing` placeholder when nothing resolves.
+- Overview-panel: new **X-Robots-Tag** row reads the page's actual `X-Robots-Tag` HTTP response header via a 1.5s HEAD probe, so the bar reports what the server is genuinely emitting (CDNs, security plugins, framework middleware can override the page-level meta).
+- New **Tools** section with one-click shortcuts to the site's `robots.txt` and `sitemap.xml`, opening in new tabs.
+
+### SeoNeoBar 1.2.0 — Overview-panel parity with Detailed
+
+- New **URL** row above Canonical shows the address the visitor is actually on (preserving URL segments and pagination prefix). Editors can spot canonical-vs-URL divergences at a glance.
+- New **Lang** row shows the BCP47 language code for the current request (consumes SeoNeo's new `getHreflangCode()`, so `en` / `de` rather than PW's internal `default` / `de`).
+- New **Word count** row counts whitespace-separated tokens in the page's body field after stripping HTML; falls back to `n/a` when the template has no body-like field.
+- Canonical now shows a `self-referencing` sublabel when canonical matches the current URL.
+- Keywords and Hreflang are always rendered with a muted `Missing` / `Single-language site` placeholder when empty.
+
+### SeoNeoBar 1.1.2 — consume `SeoNeo::getHreflangCode()`
+
+- The bar's HREFLANG row now routes language code resolution through SeoNeo's new `getHreflangCode()` method (shipped in SeoNeo 1.5.1), so the codes shown in the bar match the codes emitted in the page's rendered `<head>` and respect any per-language overrides configured in module config.
 
 ### SeoNeoBar 1.1.1 — canonical-context spoof
 
