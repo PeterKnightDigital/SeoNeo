@@ -65,7 +65,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.5.2',
+			'version'  => '1.6.0',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -96,6 +96,18 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'noindex_hidden'   => 0,
 			'noindex_sitewide' => 0,
 			'nofollow_sitewide' => 0,
+			'jsonld_enabled'   => 1,
+			'jsonld_org_type'  => 'Organization',
+			'jsonld_org_name'  => '',
+			'jsonld_org_url'   => '',
+			'jsonld_org_logo'  => '',
+			'jsonld_org_description' => '',
+			'jsonld_org_sameas' => '',
+			'jsonld_default_author' => 0,
+			'jsonld_article_templates' => '',
+			'jsonld_person_templates' => 'user',
+			'jsonld_breadcrumbs' => 1,
+			'jsonld_pretty'    => 1,
 			'smart_map_text'   => "title=headline,title\ndescription=summary,body",
 			'template_defaults_text' => '',
 			'custom_tags_text' => '',
@@ -919,6 +931,346 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		return '<title>' . $this->esc($title) . '</title>';
 	}
 
+	// ────────────────────────────────────────────────────────────────────
+	//  JSON-LD (structured data)
+	// ────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Build the JSON-LD `@graph` for the given page. The graph contains a
+	 * site-wide Organization (or Person) node, a WebSite node, a WebPage
+	 * node, and any per-page additions (Article, Person, BreadcrumbList).
+	 *
+	 * Hookable so downstream sites can add nodes, modify properties, or
+	 * remove nodes by manipulating the returned array.
+	 *
+	 * Returns an empty array when JSON-LD is disabled in config — the
+	 * `renderJsonLd()` caller then skips the script tag entirely.
+	 *
+	 * @return array `['@context' => 'https://schema.org', '@graph' => [...]]`
+	 */
+	public function ___getJsonLd(Page $page): array {
+		if(!(int) $this->get('jsonld_enabled')) return [];
+
+		$nodes = [];
+
+		$org = $this->buildJsonLdOrganization();
+		if($org) $nodes[] = $org;
+
+		$website = $this->buildJsonLdWebSite();
+		if($website) $nodes[] = $website;
+
+		$webpage = $this->buildJsonLdWebPage($page);
+		if($webpage) $nodes[] = $webpage;
+
+		$type = $this->detectJsonLdPageType($page);
+		if($type === 'Article') {
+			$article = $this->buildJsonLdArticle($page);
+			if($article) $nodes[] = $article;
+		} elseif($type === 'Person') {
+			$person = $this->buildJsonLdPerson($page);
+			if($person) $nodes[] = $person;
+		}
+
+		if((int) $this->get('jsonld_breadcrumbs')) {
+			$breadcrumb = $this->buildJsonLdBreadcrumbs($page);
+			if($breadcrumb) $nodes[] = $breadcrumb;
+		}
+
+		return ['@context' => 'https://schema.org', '@graph' => $nodes];
+	}
+
+	/**
+	 * Render the JSON-LD script tag for the given page. Returns empty
+	 * string when JSON-LD is disabled or the graph is empty.
+	 */
+	public function ___renderJsonLd(Page $page): string {
+		$data = $this->getJsonLd($page);
+		if(!is_array($data) || empty($data['@graph'])) return '';
+		$flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+		if((int) $this->get('jsonld_pretty')) $flags |= JSON_PRETTY_PRINT;
+		$json = json_encode($data, $flags);
+		if($json === false) return '';
+		return '<script type="application/ld+json">' . "\n" . $json . "\n" . '</script>';
+	}
+
+	protected function buildJsonLdOrganization(): ?array {
+		$name = (string) ($this->get('jsonld_org_name') ?: $this->getSiteName());
+		$url  = (string) ($this->get('jsonld_org_url')  ?: $this->wire('config')->urls->httpRoot);
+		if($name === '' || $url === '') return null;
+
+		$type = (string) ($this->get('jsonld_org_type') ?: 'Organization');
+		$type = preg_match('/^[A-Za-z]+$/', $type) ? $type : 'Organization';
+
+		$node = [
+			'@type' => $type,
+			'@id'   => $this->jsonLdOrgId(),
+			'name'  => $name,
+			'url'   => rtrim($url, '/') . '/',
+		];
+
+		$desc = trim((string) $this->get('jsonld_org_description'));
+		if($desc !== '') $node['description'] = $desc;
+
+		$logo = trim((string) $this->get('jsonld_org_logo'));
+		if($logo !== '') {
+			$node['logo'] = [
+				'@type'      => 'ImageObject',
+				'url'        => $logo,
+				'contentUrl' => $logo,
+			];
+		}
+
+		$sameAs = $this->parseJsonLdLines((string) $this->get('jsonld_org_sameas'));
+		if($sameAs) $node['sameAs'] = $sameAs;
+
+		return $node;
+	}
+
+	protected function buildJsonLdWebSite(): ?array {
+		$name = (string) ($this->get('jsonld_org_name') ?: $this->getSiteName());
+		$url  = (string) ($this->get('jsonld_org_url')  ?: $this->wire('config')->urls->httpRoot);
+		if($url === '') return null;
+
+		$node = [
+			'@type' => 'WebSite',
+			'@id'   => $this->jsonLdWebSiteId(),
+			'url'   => rtrim($url, '/') . '/',
+		];
+		if($name !== '') $node['name'] = $name;
+
+		$orgId = $this->jsonLdOrgId();
+		if($orgId !== '') $node['publisher'] = ['@id' => $orgId];
+
+		// Language: use the default language code, sites often serve more
+		// than one language but @id-deduplication keeps the WebSite singular
+		$default = $this->wire('languages') && method_exists($this->wire('languages'), 'getDefault')
+			? $this->wire('languages')->getDefault()
+			: null;
+		$inLang = $this->getHreflangCode($default);
+		if($inLang !== '') $node['inLanguage'] = $inLang;
+
+		return $node;
+	}
+
+	protected function buildJsonLdWebPage(Page $page): ?array {
+		$url = $this->getCanonical($page);
+		if($url === '') return null;
+
+		$node = [
+			'@type' => 'WebPage',
+			'@id'   => $this->jsonLdWebPageId($page),
+			'url'   => $url,
+			'name'  => $this->getTitle($page),
+		];
+
+		$desc = $this->getDescription($page);
+		if($desc !== '') $node['description'] = $desc;
+
+		$lang = $this->wire('user')->language;
+		$inLang = $this->getHreflangCode($lang);
+		if($inLang !== '') $node['inLanguage'] = $inLang;
+
+		$websiteId = $this->jsonLdWebSiteId();
+		if($websiteId !== '') $node['isPartOf'] = ['@id' => $websiteId];
+
+		$ogImage = $this->getOgImage($page);
+		if($ogImage !== '') {
+			$node['primaryImageOfPage'] = ['@type' => 'ImageObject', 'url' => $ogImage];
+		}
+
+		if(method_exists($page, 'getModified') || isset($page->modified)) {
+			$mod = (int) $page->modified;
+			if($mod > 0) $node['dateModified'] = date('c', $mod);
+		}
+		if(isset($page->created)) {
+			$created = (int) $page->created;
+			if($created > 0) $node['datePublished'] = date('c', $created);
+		}
+
+		return $node;
+	}
+
+	protected function buildJsonLdArticle(Page $page): ?array {
+		$url = $this->getCanonical($page);
+		if($url === '') return null;
+
+		$node = [
+			'@type' => 'Article',
+			'@id'   => $url . '#article',
+			'headline'  => $this->getTitle($page),
+			'mainEntityOfPage' => ['@id' => $this->jsonLdWebPageId($page)],
+		];
+
+		$desc = $this->getDescription($page);
+		if($desc !== '') $node['description'] = $desc;
+
+		$ogImage = $this->getOgImage($page);
+		if($ogImage !== '') $node['image'] = $ogImage;
+
+		if(isset($page->created) && (int) $page->created > 0) {
+			$node['datePublished'] = date('c', (int) $page->created);
+		}
+		if(isset($page->modified) && (int) $page->modified > 0) {
+			$node['dateModified'] = date('c', (int) $page->modified);
+		}
+
+		$author = $this->resolveArticleAuthor($page);
+		if($author) $node['author'] = $author;
+
+		$orgId = $this->jsonLdOrgId();
+		if($orgId !== '') $node['publisher'] = ['@id' => $orgId];
+
+		$lang = $this->wire('user')->language;
+		$inLang = $this->getHreflangCode($lang);
+		if($inLang !== '') $node['inLanguage'] = $inLang;
+
+		return $node;
+	}
+
+	protected function buildJsonLdPerson(Page $page): ?array {
+		$name = trim((string) $page->title);
+		if($name === '') $name = trim((string) $page->name);
+		if($name === '') return null;
+
+		$node = [
+			'@type' => 'Person',
+			'@id'   => $this->jsonLdPersonId($page),
+			'name'  => $name,
+			'url'   => $this->getCanonical($page),
+		];
+
+		// Image: try a handful of common avatar field names
+		$avatar = $this->resolvePersonImage($page);
+		if($avatar !== '') $node['image'] = $avatar;
+
+		$desc = $this->getDescription($page);
+		if($desc !== '') $node['description'] = $desc;
+
+		return $node;
+	}
+
+	protected function buildJsonLdBreadcrumbs(Page $page): ?array {
+		$home = $this->wire('pages')->get('/');
+		if(!$home || !$home->id) return null;
+
+		$crumbs = [];
+		$parents = $page->parents();
+		$pos = 1;
+		foreach($parents as $p) {
+			if(!$p || !$p->id) continue;
+			$crumbs[] = [
+				'@type' => 'ListItem',
+				'position' => $pos++,
+				'name' => (string) $p->title,
+				'item' => (string) $p->httpUrl,
+			];
+		}
+		// Add the page itself as the final crumb
+		$crumbs[] = [
+			'@type' => 'ListItem',
+			'position' => $pos,
+			'name' => (string) $page->title,
+			'item' => $this->getCanonical($page),
+		];
+
+		// Skip if only the page itself (no real breadcrumb trail)
+		if(count($crumbs) < 2) return null;
+
+		return [
+			'@type' => 'BreadcrumbList',
+			'@id'   => $this->getCanonical($page) . '#breadcrumb',
+			'itemListElement' => $crumbs,
+		];
+	}
+
+	protected function detectJsonLdPageType(Page $page): string {
+		$tpl = $page->template->name;
+
+		$personTemplates = $this->parseJsonLdLines((string) $this->get('jsonld_person_templates'), ',');
+		if(in_array($tpl, $personTemplates, true)) return 'Person';
+
+		$articleTemplates = $this->parseJsonLdLines((string) $this->get('jsonld_article_templates'), ',');
+		if(in_array($tpl, $articleTemplates, true)) return 'Article';
+
+		return 'WebPage';
+	}
+
+	protected function resolveArticleAuthor(Page $page): ?array {
+		// Try `author` field on the page (Page reference)
+		if($page->template->hasField('author')) {
+			$author = $page->get('author');
+			if($author && is_object($author) && $author->id) {
+				$node = $this->buildJsonLdPerson($author);
+				if($node) return $node;
+			}
+		}
+		// Fall back to default author config (Page ID)
+		$defaultId = (int) $this->get('jsonld_default_author');
+		if($defaultId > 0) {
+			$author = $this->wire('pages')->get($defaultId);
+			if($author && $author->id) {
+				$node = $this->buildJsonLdPerson($author);
+				if($node) return $node;
+			}
+		}
+		return null;
+	}
+
+	protected function resolvePersonImage(Page $page): string {
+		$candidates = ['avatar', 'photo', 'image', 'portrait', 'headshot'];
+		foreach($candidates as $name) {
+			if(!$page->template->hasField($name)) continue;
+			$val = $page->get($name);
+			if(is_object($val)) {
+				$img = method_exists($val, 'first') ? $val->first() : $val;
+				if($img && method_exists($img, 'httpUrl')) return (string) $img->httpUrl;
+				if($img && property_exists($img, 'httpUrl')) return (string) $img->httpUrl;
+			} elseif(is_string($val) && $val !== '') {
+				return $val;
+			}
+		}
+		return '';
+	}
+
+	protected function jsonLdOrgId(): string {
+		$url = (string) ($this->get('jsonld_org_url') ?: $this->wire('config')->urls->httpRoot);
+		if($url === '') return '';
+		return rtrim($url, '/') . '/#organization';
+	}
+
+	protected function jsonLdWebSiteId(): string {
+		$url = (string) ($this->get('jsonld_org_url') ?: $this->wire('config')->urls->httpRoot);
+		if($url === '') return '';
+		return rtrim($url, '/') . '/#website';
+	}
+
+	protected function jsonLdWebPageId(Page $page): string {
+		$canon = $this->getCanonical($page);
+		return $canon === '' ? '' : $canon . '#webpage';
+	}
+
+	protected function jsonLdPersonId(Page $page): string {
+		$url = (string) $page->httpUrl;
+		return $url === '' ? '' : rtrim($url, '/') . '/#person';
+	}
+
+	/**
+	 * Parse a textarea (one entry per line) or comma-separated list into a
+	 * trimmed, deduplicated PHP array. Empty entries and comment lines are
+	 * skipped.
+	 */
+	protected function parseJsonLdLines(string $text, string $delim = "\n"): array {
+		if($text === '') return [];
+		$parts = $delim === "\n" ? preg_split('/\r?\n/', $text) : explode($delim, $text);
+		$out = [];
+		foreach($parts as $part) {
+			$part = trim($part);
+			if($part === '' || str_starts_with($part, '#')) continue;
+			if(!in_array($part, $out, true)) $out[] = $part;
+		}
+		return $out;
+	}
+
 	public function ___renderHead(Page $page): string {
 		$lines = ['<!-- SeoNeo -->'];
 
@@ -1024,6 +1376,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 		$alts = $this->renderHreflangAlternates($page);
 		if($alts !== '') $lines[] = $alts;
+
+		$jsonLd = $this->renderJsonLd($page);
+		if($jsonLd !== '') $lines[] = $jsonLd;
 
 		if($page->template->hasField('seoneo_custom')) {
 			$custom = trim((string) $page->getUnformatted('seoneo_custom'));
@@ -1732,6 +2087,126 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->description = $this->_('Companion to *Site-wide noindex*. When enabled, `<meta name="robots">` will always include `nofollow`. Off by default. Useful for staging environments where you do not want search engines following links into the unfinished site.');
 		$f->columnWidth = 50;
 		if((int) $this->get('nofollow_sitewide')) $f->attr('checked', 'checked');
+		$fs->add($f);
+
+		$inputfields->add($fs);
+
+		// -- JSON-LD (structured data) ------------------------------------
+
+		$fs = $modules->get('InputfieldFieldset');
+		$fs->label = $this->_('Structured data (JSON-LD)');
+		$fs->description = $this->_('SEO NEO can emit a `<script type="application/ld+json">` block on every page containing an Organization (or Person), WebSite, WebPage, optional Article / Person, and BreadcrumbList. This is what feeds Google Search rich results and helps AI search agents (Perplexity, Bing Copilot, etc.) understand site authorship and structure.');
+		$fs->collapsed = Inputfield::collapsedYes;
+
+		$f = $modules->get('InputfieldCheckbox');
+		$f->name = 'jsonld_enabled';
+		$f->label = $this->_('Emit JSON-LD');
+		$f->label2 = $this->_('Render the structured data script on every page');
+		$f->description = $this->_('Master switch. When enabled, SEO NEO renders a `<script type="application/ld+json">` block in the page `<head>` containing the nodes described below. **On by default** — but no nodes are emitted unless you fill in at least an Organization name and URL.');
+		$f->columnWidth = 100;
+		if((int) $this->get('jsonld_enabled')) $f->attr('checked', 'checked');
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldSelect');
+		$f->name = 'jsonld_org_type';
+		$f->label = $this->_('Publisher type');
+		$f->description = $this->_('Schema.org type for the site-wide publisher node. `Organization` and its more specific subtypes (`LocalBusiness`, `NewsMediaOrganization`, `EducationalOrganization`) are appropriate for businesses and institutions. Pick `Person` for solo sites where you yourself are the publisher.');
+		$f->addOption('Organization', 'Organization');
+		$f->addOption('LocalBusiness', 'LocalBusiness');
+		$f->addOption('NewsMediaOrganization', 'NewsMediaOrganization');
+		$f->addOption('EducationalOrganization', 'EducationalOrganization');
+		$f->addOption('Person', 'Person');
+		$f->value = $this->get('jsonld_org_type') ?: 'Organization';
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'jsonld_org_name';
+		$f->label = $this->_('Publisher name');
+		$f->description = $this->_('Falls back to the site name above when empty. Used as the Organization (or Person) `name` and as the WebSite `name`.');
+		$f->placeholder = (string) $this->getSiteName();
+		$f->value = $this->get('jsonld_org_name');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldURL');
+		$f->name = 'jsonld_org_url';
+		$f->label = $this->_('Publisher URL');
+		$f->description = $this->_('The canonical site URL. Falls back to the ProcessWire `$config->urls->httpRoot` when empty. Used in the `@id` URIs that wire the graph together — leave empty for almost all cases.');
+		$f->placeholder = (string) $this->wire('config')->urls->httpRoot;
+		$f->value = $this->get('jsonld_org_url');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldURL');
+		$f->name = 'jsonld_org_logo';
+		$f->label = $this->_('Publisher logo URL');
+		$f->description = $this->_('Absolute URL to a square logo image (PNG or SVG). Google requires logos of at least 112×112 px for the [Logo structured data spec](https://developers.google.com/search/docs/appearance/structured-data/logo). Omitted from the graph when empty.');
+		$f->placeholder = 'https://example.com/logo.png';
+		$f->value = $this->get('jsonld_org_logo');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldTextarea');
+		$f->name = 'jsonld_org_description';
+		$f->label = $this->_('Publisher description');
+		$f->description = $this->_('One- or two-sentence description of the publisher. Used as the Organization `description`. Optional.');
+		$f->rows = 3;
+		$f->value = $this->get('jsonld_org_description');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldTextarea');
+		$f->name = 'jsonld_org_sameas';
+		$f->label = $this->_('Publisher sameAs URLs');
+		$f->description = $this->_('Optional. One URL per line — links to social profiles, Wikipedia, or other canonical references that identify the same publisher elsewhere on the web. Emitted as the `sameAs` array. Example:' . "\n" . '`https://twitter.com/yourhandle`' . "\n" . '`https://www.linkedin.com/company/yourcompany`');
+		$f->rows = 4;
+		$f->value = $this->get('jsonld_org_sameas');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'jsonld_article_templates';
+		$f->label = $this->_('Article templates');
+		$f->description = $this->_('Comma-separated list of template names whose pages should be emitted with an additional `Article` node alongside the `WebPage` (e.g. `journal_post,blog_post,news_article`). Empty by default.');
+		$f->placeholder = 'journal_post,blog_post';
+		$f->value = $this->get('jsonld_article_templates');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'jsonld_person_templates';
+		$f->label = $this->_('Person templates');
+		$f->description = $this->_('Comma-separated list of template names whose pages should be emitted with an additional `Person` node alongside the `WebPage` (e.g. `user,contributor,author`). Defaults to `user` so PW User pages used as author bios are recognised.');
+		$f->placeholder = 'user';
+		$f->value = $this->get('jsonld_person_templates') ?: 'user';
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldPageListSelect');
+		$f->name = 'jsonld_default_author';
+		$f->label = $this->_('Default Article author');
+		$f->description = $this->_('Optional fallback for the Article `author` property when no per-page `author` field is set. Choose a User page that represents the typical / default author for the site.');
+		$f->value = (int) $this->get('jsonld_default_author');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldCheckbox');
+		$f->name = 'jsonld_breadcrumbs';
+		$f->label = $this->_('Emit BreadcrumbList');
+		$f->label2 = $this->_('Include a BreadcrumbList node built from the page hierarchy');
+		$f->description = $this->_('Adds a `BreadcrumbList` to the graph on every page that has a non-empty parent chain. Lets Google show breadcrumbs in search results instead of the bare URL. On by default.');
+		$f->columnWidth = 50;
+		if((int) $this->get('jsonld_breadcrumbs')) $f->attr('checked', 'checked');
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldCheckbox');
+		$f->name = 'jsonld_pretty';
+		$f->label = $this->_('Pretty-print JSON-LD');
+		$f->label2 = $this->_('Emit indented, human-readable JSON in the rendered `<head>`');
+		$f->description = $this->_('Helps when inspecting view-source or screenshotting the structured data. Output is identical to crawlers either way — pretty-printing just adds whitespace. On by default for developer experience; turn off if you prefer minimal markup.');
+		$f->columnWidth = 50;
+		if((int) $this->get('jsonld_pretty')) $f->attr('checked', 'checked');
 		$fs->add($f);
 
 		$inputfields->add($fs);
