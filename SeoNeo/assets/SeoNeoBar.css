@@ -891,6 +891,40 @@ body.pkd-seoneo-body-offset {
 
 
 /* ─────────────────────────────────────────────────────────────────────
+   Simple key/value rows (Lang, Word count, etc.)
+   ───────────────────────────────────────────────────────────────────── */
+
+.pkd-seoneo-kv {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pkd-seoneo-sp-3);
+  padding: var(--pkd-seoneo-sp-1) 0;
+  font-size: var(--pkd-seoneo-fs-sm);
+}
+
+.pkd-seoneo-kv__key {
+  flex: 0 0 auto;
+  min-width: 90px;
+  color: var(--pkd-seoneo-color-muted);
+  text-transform: uppercase;
+  font-size: var(--pkd-seoneo-fs-xs);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.pkd-seoneo-kv__value {
+  flex: 1 1 auto;
+  color: var(--pkd-seoneo-color-fg);
+  word-break: break-word;
+}
+
+.pkd-seoneo-kv__value--missing {
+  color: var(--pkd-seoneo-color-muted);
+  font-style: italic;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
    Empty / unconfigured state
    ───────────────────────────────────────────────────────────────────── */
 

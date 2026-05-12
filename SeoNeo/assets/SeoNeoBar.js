@@ -186,26 +186,57 @@
       showCounter: true,
     });
 
-    // Canonical
-    metaFields += renderUrlField('Canonical', data.canonical.value, data.canonical.isDefault ? 'auto (page URL)' : 'explicit');
+    // URL (the address the visitor is actually on, preserving segments
+    // and pagination). Rendered above Canonical so editors can spot
+    // mismatches at a glance.
+    if (data.url && data.url.value) {
+      metaFields += renderUrlField('URL', data.url.value, 'current page');
+    }
+
+    // Canonical (what the page tells crawlers is its preferred URL).
+    var canonNote = data.canonical.isSelfReferencing
+      ? 'self-referencing'
+      : (data.canonical.isDefault ? 'auto (page URL)' : 'explicit');
+    metaFields += renderUrlField('Canonical', data.canonical.value, canonNote);
 
     html += section('Meta', metaFields);
+
+    // ── Page / language signals ───────────────────────────────────────
+    var signalsHtml = '';
+    if (data.lang) {
+      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Lang</span>' +
+        '<span class="pkd-seoneo-kv__value">' + esc(data.lang) + '</span></div>';
+    }
+    if (data.wordCount !== null && data.wordCount !== undefined) {
+      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Word count</span>' +
+        '<span class="pkd-seoneo-kv__value">' + esc(String(data.wordCount)) + '</span></div>';
+    } else {
+      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Word count</span>' +
+        '<span class="pkd-seoneo-kv__value pkd-seoneo-kv__value--missing">n/a</span></div>';
+    }
+    if (signalsHtml) html += section('Signals', signalsHtml);
 
     // ── Robots section ────────────────────────────────────────────────
     html += section('Robots', renderRobots(data.robots));
 
-    // ── Keywords ─────────────────────────────────────────────────────
+    // ── Keywords (always rendered; placeholder when empty) ────────────
+    var kwHtml;
     if (data.keywords) {
-      const kws = data.keywords.split(',').map(function (k) { return k.trim(); }).filter(Boolean);
-      let kwHtml = '<ul class="pkd-seoneo-tag-list">';
+      var kws = data.keywords.split(',').map(function (k) { return k.trim(); }).filter(Boolean);
+      kwHtml = '<ul class="pkd-seoneo-tag-list">';
       kws.forEach(function (k) { kwHtml += '<li class="pkd-seoneo-tag-list__item">' + esc(k) + '</li>'; });
       kwHtml += '</ul>';
-      html += section('Keywords', kwHtml);
+    } else {
+      kwHtml = '<div class="pkd-seoneo-kv__value pkd-seoneo-kv__value--missing">Missing</div>';
     }
+    html += section('Keywords', kwHtml);
 
-    // ── Hreflang ──────────────────────────────────────────────────────
-    if (data.hreflang && data.hreflang.length > 1) {
+    // ── Hreflang (always rendered; placeholder when single-language) ──
+    if (data.hreflang && data.hreflang.length > 0) {
       html += section('Hreflang', renderHreflang(data.hreflang));
+    } else {
+      html += section('Hreflang',
+        '<div class="pkd-seoneo-kv__value pkd-seoneo-kv__value--missing">Single-language site</div>');
     }
 
     return html;

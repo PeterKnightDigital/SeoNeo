@@ -21,7 +21,7 @@ class SeoNeoBar extends WireData implements Module {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo Bar',
-			'version'  => '1.1.2',
+			'version'  => '1.2.0',
 			'summary'  => 'Frontend admin bar showing resolved SEO data for the current page.',
 			'icon'     => 'bar-chart',
 			'autoload' => true,
@@ -170,6 +170,19 @@ class SeoNeoBar extends WireData implements Module {
 		// Hreflang alternates
 		$hreflang = $this->buildHreflang($page);
 
+		// Current viewing URL: the address the visitor is actually on,
+		// preserving URL segments and pagination. Distinct from canonical,
+		// which may strip either depending on SEO NEO's policy config.
+		$resolvedUrl = $this->buildCurrentUrl($page);
+
+		// BCP47 language code for the page's current language
+		$lang = $this->wire('user')->language;
+		$langCode = method_exists($module, 'getHreflangCode') ? $module->getHreflangCode($lang) : 'en';
+
+		// Word count: count whitespace-separated tokens in the body field
+		// after stripping HTML. Returns null when the template has no body.
+		$wordCount = $this->computeWordCount($page);
+
 		// Twitter card type
 		$twitterCard = $resolvedOgImage ? 'summary_large_image' : 'summary';
 
@@ -203,15 +216,21 @@ class SeoNeoBar extends WireData implements Module {
 				'source'   => $descSource,
 				'length'   => mb_strlen($resolvedDesc),
 			],
+			'url' => [
+				'value' => $resolvedUrl,
+			],
 			'canonical' => [
 				'value'    => $resolvedCanon,
 				'isDefault' => $resolvedCanon === (string) $page->httpUrl,
+				'isSelfReferencing' => $resolvedCanon === $resolvedUrl,
 			],
 			'robots' => [
 				'value'    => $resolvedRobots,
 				'noindex'  => $noindex,
 				'nofollow' => $nofollow,
 			],
+			'lang' => $langCode,
+			'wordCount' => $wordCount,
 			'og' => [
 				'title'       => $resolvedOgTitle,
 				'description' => $resolvedDesc,
@@ -258,6 +277,62 @@ class SeoNeoBar extends WireData implements Module {
 		if($key === 'title') return 'page title';
 
 		return '';
+	}
+
+	/**
+	 * Build the absolute URL the visitor is actually on, preserving any
+	 * URL segments and pagination prefix snapshotted from the frontend
+	 * request (see handleDataRequest). Always falls back to $page->httpUrl
+	 * so the resulting value is never empty.
+	 */
+	protected function buildCurrentUrl(Page $page): string {
+		$input = $this->wire('input');
+		$base  = (string) $page->httpUrl;
+		if($base === '') return '';
+
+		$segmentStr = method_exists($input, 'urlSegmentStr')
+			? trim((string) $input->urlSegmentStr(), '/')
+			: '';
+		$pageNum = max(1, (int) $input->pageNum());
+
+		$out = rtrim($base, '/');
+		if($segmentStr !== '') $out .= '/' . $segmentStr;
+
+		if($pageNum > 1) {
+			$config = $this->wire('config');
+			$prefix = (string) ($config->pageNumUrlPrefix ?? 'page');
+			$user   = $this->wire('user');
+			if($user && $user->language && is_array($config->pageNumUrlPrefixes ?? null)) {
+				$langName = (string) $user->language->name;
+				if(isset($config->pageNumUrlPrefixes[$langName])) {
+					$prefix = (string) $config->pageNumUrlPrefixes[$langName];
+				}
+			}
+			$out .= '/' . $prefix . $pageNum;
+		}
+
+		return $out . '/';
+	}
+
+	/**
+	 * Count words in the page body, after stripping HTML. Returns null if
+	 * the template has no body-like field, so the bar can render "n/a".
+	 */
+	protected function computeWordCount(Page $page): ?int {
+		$candidates = ['body', 'content', 'text'];
+		$text = '';
+		foreach($candidates as $name) {
+			if(!$page->template->hasField($name)) continue;
+			$val = $page->get($name);
+			if(is_object($val) && method_exists($val, '__toString')) $val = (string) $val;
+			$text = trim((string) $val);
+			if($text !== '') break;
+		}
+		if($text === '') return null;
+
+		$plain = trim(preg_replace('/\s+/u', ' ', strip_tags($text)));
+		if($plain === '') return 0;
+		return count(preg_split('/\s+/u', $plain));
 	}
 
 	protected function buildHreflang(Page $page): array {
