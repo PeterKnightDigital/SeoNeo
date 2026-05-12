@@ -209,18 +209,28 @@
 	grid-template-rows: auto auto;
 	column-gap: 8px;
 	align-items: start;
-	padding: 6px 12px 6px 10px;
+	padding: 8px 12px 8px 10px;
 	border-left: 3px solid transparent;
+	margin: 5px 5px 0 5px;
 }
 
-.seoneo-chain-step + .seoneo-chain-step {
-	border-top: 1px solid #f9fafb;
+.seoneo-chain-sep {
+	list-style: none;
+	padding: 1px 0 1px 39px;
+	line-height: 1;
+}
+
+.seoneo-chain-sep svg {
+	width: 12px;
+	height: 12px;
+	display: block;
+	color: #354b60;
 }
 
 /* Active/winning step */
 .seoneo-chain-step--winner {
-	background: #f0fdf4;
-	border-left-color: #16a34a;
+	background: #f0f3f7;
+	border-radius: 5px;
 }
 
 /* Empty (skipped) step */
@@ -236,8 +246,8 @@
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	border: 2px solid #d1d5db;
-	margin-top: 3px;
+	border: 1px solid #758393;
+	align-self: center;
 }
 
 .seoneo-chain-step--winner .seoneo-chain-indicator {
@@ -249,13 +259,33 @@
 .seoneo-chain-label {
 	grid-column: 2;
 	grid-row: 1;
-	font-weight: 600;
+	font-weight: 500;
 	color: #111827;
-	word-break: break-all;
+	word-break: break-word;
 }
 
 .seoneo-chain-step--winner .seoneo-chain-label {
 	color: #15803d;
+}
+
+.seoneo-chain-label-text {
+	font-weight: 500;
+}
+
+.seoneo-chain-fieldname {
+	font-weight: 400;
+	color: #6b7280;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+}
+
+
+.seoneo-chain-inherited {
+	font-weight: 400;
+	color: #9ca3af;
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }
 
 /* Value preview */
@@ -264,8 +294,9 @@
 	grid-row: 2;
 	color: #6b7280;
 	font-size: 12px;
-	margin-top: 1px;
+	margin-top: 2px;
 	word-break: break-word;
+	font-weight: 400;
 }
 
 .seoneo-chain-preview em {
@@ -324,6 +355,7 @@
 	margin-top: 3px;
 	color: #6b7280;
 	transition: color 0.15s;
+	text-align: right;
 }
 
 .seoneo-counter[data-state="green"] { color: #047857; }

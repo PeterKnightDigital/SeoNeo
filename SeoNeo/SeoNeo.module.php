@@ -65,7 +65,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.4.0',
+			'version'  => '1.5.0',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -1203,21 +1203,47 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			}
 		};
 
+		// Resolve a PW field's human label for a given field name. Handles
+		// dotted paths (uses the first segment) and the * ancestor-walk prefix.
+		// Returns null when no matching field is found, so callers can fall back.
+		$getFieldLabel = function(string $fieldName): ?string {
+			if($fieldName === '') return null;
+			if(strncmp($fieldName, '*', 1) === 0) $fieldName = ltrim(substr($fieldName, 1));
+			$first = $fieldName;
+			$dot = strpos($first, '.');
+			if($dot !== false) $first = substr($first, 0, $dot);
+			$field = $this->wire('fields')->get($first);
+			if(!$field) return null;
+			$label = '';
+			if(method_exists($field, 'getLabel')) $label = (string) $field->getLabel();
+			if($label === '') $label = (string) $field->label;
+			return $label !== '' ? $label : null;
+		};
+
+		// Track field names already added so duplicates are silently skipped.
+		// The same real field can appear as the primary, in the smart map, and
+		// as the page-title fallback — we only show it once, at its earliest
+		// position in the resolution order.
+		$seenFieldNames = [];
+
 		// Step 1: primary SEO field
 		$primaryField = $this->get('role_' . $key) ?: ('seoneo_' . $key);
 		$primaryValue = $this->readField($page, $primaryField);
+		$primaryLabelText = $getFieldLabel($primaryField) ?: $primaryField;
+		$seenFieldNames[$primaryField] = true;
 		$step = [
-			'label'      => $primaryField,
-			'fieldName'  => $primaryField,
-			'value'      => $primaryValue,
-			'winner'     => false,
-			'type'       => 'primary',
-			'inheritable' => false,
+			'label'        => $primaryLabelText . ' (' . $primaryField . ')',
+			'labelText'    => $primaryLabelText,
+			'displayName'  => $primaryField,
+			'fieldName'    => $primaryField,
+			'value'        => $primaryValue,
+			'winner'       => false,
+			'type'         => 'primary',
+			'inheritable'  => false,
+			'inheritedSuffix' => '',
 		];
 		$markWinner($step);
 		$steps[] = $step;
-
-		if($winnerFound) return $steps;
 
 		// Step 2: smart-map fields
 		$map = $this->getSmartMap();
@@ -1233,6 +1259,10 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 					$fieldName = ltrim(substr($rawField, 1));
 				}
 
+				// Skip fields already represented in the chain
+				if(isset($seenFieldNames[$fieldName])) continue;
+				$seenFieldNames[$fieldName] = true;
+
 				$val = $this->readSmartMapValue($page, $fieldName);
 
 				// Ancestor-walk: try parents if the * prefix is set and page value is empty
@@ -1245,49 +1275,60 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 					}
 				}
 
-				$label = $fieldName;
-				if($inheritable) $label = $fieldName . ($fromAncestor ? ' (inherited)' : ' (inheritable)');
+				$labelText = $getFieldLabel($fieldName) ?: $fieldName;
+				$inheritedSuffix = '';
+				if($inheritable) $inheritedSuffix = $fromAncestor ? '(inherited)' : '(inheritable)';
+
+				$labelStr = $labelText . ' (' . $fieldName . ')';
+				if($inheritedSuffix !== '') $labelStr .= ' ' . $inheritedSuffix;
 
 				$step = [
-					'label'      => $label,
-					'fieldName'  => $rawField,
-					'value'      => $val,
-					'winner'     => false,
-					'type'       => 'smart_map',
-					'inheritable' => $inheritable,
+					'label'        => $labelStr,
+					'labelText'    => $labelText,
+					'displayName'  => $fieldName,
+					'fieldName'    => $rawField,
+					'value'        => $val,
+					'winner'       => false,
+					'type'         => 'smart_map',
+					'inheritable'  => $inheritable,
+					'inheritedSuffix' => $inheritedSuffix,
 				];
 				$markWinner($step);
 				$steps[] = $step;
-
-				if($winnerFound) return $steps;
 			}
 		}
 
 		// Step 3: template default
 		$tplDefault = $this->renderTemplateDefault($page, $key);
 		$step = [
-			'label'      => 'template default',
-			'fieldName'  => 'template_default',
-			'value'      => $tplDefault,
-			'winner'     => false,
-			'type'       => 'template_default',
-			'inheritable' => false,
+			'label'        => 'Template default',
+			'labelText'    => 'Template default',
+			'displayName'  => '',
+			'fieldName'    => 'template_default',
+			'value'        => $tplDefault,
+			'winner'       => false,
+			'type'         => 'template_default',
+			'inheritable'  => false,
+			'inheritedSuffix' => '',
 		];
 		$markWinner($step);
 		$steps[] = $step;
 
-		if($winnerFound) return $steps;
-
-		// Step 4: page title (title key only)
-		if($key === 'title') {
+		// Step 4: page title (title key only) — skip if `title` already appeared
+		// in the smart map (it would be a duplicate of the same field).
+		if($key === 'title' && !isset($seenFieldNames['title'])) {
 			$pageTitle = (string) $page->title;
+			$titleLabel = $getFieldLabel('title') ?: 'Page title';
 			$step = [
-				'label'      => 'page title',
-				'fieldName'  => 'title',
-				'value'      => $pageTitle,
-				'winner'     => false,
-				'type'       => 'page_title',
-				'inheritable' => false,
+				'label'        => $titleLabel . ' (title)',
+				'labelText'    => $titleLabel,
+				'displayName'  => 'title',
+				'fieldName'    => 'title',
+				'value'        => $pageTitle,
+				'winner'       => false,
+				'type'         => 'page_title',
+				'inheritable'  => false,
+				'inheritedSuffix' => '',
 			];
 			$markWinner($step);
 			$steps[] = $step;

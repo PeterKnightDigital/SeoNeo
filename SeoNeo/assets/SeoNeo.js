@@ -149,6 +149,7 @@
 
 	var SVG_CHAIN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
 	var SVG_ARROW_UP = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+	var SVG_ARROW_DOWN = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>';
 
 	// Currently open popover button (for close-on-outside-click)
 	var _openPopover = null;
@@ -223,10 +224,14 @@
 
 			html += '<li class="' + classes + '" data-field="' + escHtml(step.fieldName) + '" data-value="' + escHtml(step.value) + '">';
 			html += '<span class="seoneo-chain-indicator"></span>';
-			html += '<span class="seoneo-chain-label">' + escHtml(step.label) + '</span>';
+			html += '<span class="seoneo-chain-label">' + buildLabelHtml(step) + '</span>';
 			html += '<span class="seoneo-chain-preview">' + previewText + '</span>';
 			if (promoteBtn) html += promoteBtn;
 			html += '</li>';
+
+			if (i < chain.length - 1) {
+				html += '<li class="seoneo-chain-sep" aria-hidden="true">' + SVG_ARROW_DOWN + '</li>';
+			}
 		}
 		html += '</ol>';
 		return html;
@@ -238,6 +243,21 @@
 			.replace(/</g, '&lt;')
 			.replace(/>/g, '&gt;')
 			.replace(/"/g, '&quot;');
+	}
+
+	function buildLabelHtml(step) {
+		var labelText = step.labelText || step.label || step.fieldName || '';
+		var displayName = step.displayName || '';
+		var html = '<span class="seoneo-chain-label-text">' + escHtml(labelText) + '</span>';
+		// Hide the field-name brackets when there is no real field (synthetic
+		// steps like template_default) or when the label and field name match.
+		if (displayName && displayName !== labelText && step.type !== 'template_default') {
+			html += ' <span class="seoneo-chain-fieldname">(' + escHtml(displayName) + ')</span>';
+		}
+		if (step.inheritedSuffix) {
+			html += ' <span class="seoneo-chain-inherited">' + escHtml(step.inheritedSuffix) + '</span>';
+		}
+		return html;
 	}
 
 	function attachPromoteHandlers(popover, primaryInput, chain) {
