@@ -99,9 +99,11 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'jsonld_enabled'   => 1,
 			'jsonld_org_type'  => 'Organization',
 			'jsonld_org_name'  => '',
+			'jsonld_org_name_map' => '',
 			'jsonld_org_url'   => '',
 			'jsonld_org_logo'  => '',
 			'jsonld_org_description' => '',
+			'jsonld_org_description_map' => '',
 			'jsonld_org_sameas' => '',
 			'jsonld_default_author' => 0,
 			'jsonld_article_templates' => '',
@@ -994,7 +996,17 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	protected function buildJsonLdOrganization(): ?array {
-		$name = (string) ($this->get('jsonld_org_name') ?: $this->getSiteName());
+		$lang = $this->wire('user') ? $this->wire('user')->language : null;
+
+		// Name: per-language map > explicit single-text override > site_name (itself
+		// language-aware via site_name_map) > empty.
+		$name = $this->resolveLocalizedJsonLdValue(
+			'jsonld_org_name_map',
+			(string) $this->get('jsonld_org_name'),
+			$lang
+		);
+		if($name === '') $name = (string) $this->getSiteName($lang);
+
 		$url  = (string) ($this->get('jsonld_org_url')  ?: $this->wire('config')->urls->httpRoot);
 		if($name === '' || $url === '') return null;
 
@@ -1008,7 +1020,12 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'url'   => rtrim($url, '/') . '/',
 		];
 
-		$desc = trim((string) $this->get('jsonld_org_description'));
+		// Description: same resolution order (per-language map first).
+		$desc = $this->resolveLocalizedJsonLdValue(
+			'jsonld_org_description_map',
+			(string) $this->get('jsonld_org_description'),
+			$lang
+		);
 		if($desc !== '') $node['description'] = $desc;
 
 		$logo = trim((string) $this->get('jsonld_org_logo'));
@@ -1027,7 +1044,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	protected function buildJsonLdWebSite(): ?array {
-		$name = (string) ($this->get('jsonld_org_name') ?: $this->getSiteName());
+		$lang = $this->wire('user') ? $this->wire('user')->language : null;
+		$name = $this->resolveLocalizedJsonLdValue(
+			'jsonld_org_name_map',
+			(string) $this->get('jsonld_org_name'),
+			$lang
+		);
+		if($name === '') $name = (string) $this->getSiteName($lang);
+
 		$url  = (string) ($this->get('jsonld_org_url')  ?: $this->wire('config')->urls->httpRoot);
 		if($url === '') return null;
 
@@ -1252,6 +1276,32 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	protected function jsonLdPersonId(Page $page): string {
 		$url = (string) $page->httpUrl;
 		return $url === '' ? '' : rtrim($url, '/') . '/#person';
+	}
+
+	/**
+	 * Resolve a JSON-LD config value for the current request language.
+	 *
+	 * Resolution order:
+	 *   1. Per-language map entry (e.g. `de=Mein Beispiel`) for the requested language.
+	 *   2. Per-language map entry for `default` (so a site can localise *just* away
+	 *      from the bare config field while still using the map machinery).
+	 *   3. The single-text `$fallback` value.
+	 *
+	 * @param string $mapConfigKey Module config key holding the `key=value` map textarea.
+	 * @param string $fallback     The single-text value used when no map entry matches.
+	 * @param Language|null $lang  Target language (defaults to current request language).
+	 */
+	protected function resolveLocalizedJsonLdValue(string $mapConfigKey, string $fallback, $lang = null): string {
+		$map = $this->parseLanguageMap((string) $this->get($mapConfigKey));
+		$name = $this->resolveLanguageName($lang);
+
+		if($name !== '' && isset($map[$name]) && trim($map[$name]) !== '') {
+			return trim($map[$name]);
+		}
+		if(isset($map['default']) && trim($map['default']) !== '') {
+			return trim($map['default']);
+		}
+		return trim($fallback);
 	}
 
 	/**
@@ -2123,9 +2173,22 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f = $modules->get('InputfieldText');
 		$f->name = 'jsonld_org_name';
 		$f->label = $this->_('Publisher name');
-		$f->description = $this->_('Falls back to the site name above when empty. Used as the Organization (or Person) `name` and as the WebSite `name`.');
+		$f->description = $this->_('Default Organization `name`. Falls back to the site name above when empty. For multi-language sites, the language-specific overrides below take precedence — most editors will leave this field empty and use the map.');
 		$f->placeholder = (string) $this->getSiteName();
 		$f->value = $this->get('jsonld_org_name');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldTextarea');
+		$f->name = 'jsonld_org_name_map';
+		$f->label = $this->_('Publisher name (per language)');
+		$f->description = $this->_(
+			'Optional. Per-language overrides for the Organization `name`, one per line. Resolved on every page render based on the visitor\'s language. Example:' . "\n" .
+			'`default=Lakes & Trails`' . "\n" .
+			'`de=Seen & Pfade`'
+		);
+		$f->rows = 3;
+		$f->value = $this->get('jsonld_org_name_map');
 		$f->columnWidth = 50;
 		$fs->add($f);
 
@@ -2150,9 +2213,22 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f = $modules->get('InputfieldTextarea');
 		$f->name = 'jsonld_org_description';
 		$f->label = $this->_('Publisher description');
-		$f->description = $this->_('One- or two-sentence description of the publisher. Used as the Organization `description`. Optional.');
+		$f->description = $this->_('Default one- or two-sentence description of the publisher. Used as the Organization `description`. For multi-language sites, the per-language overrides below take precedence.');
 		$f->rows = 3;
 		$f->value = $this->get('jsonld_org_description');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldTextarea');
+		$f->name = 'jsonld_org_description_map';
+		$f->label = $this->_('Publisher description (per language)');
+		$f->description = $this->_(
+			'Optional. Per-language overrides for the Organization `description`, one per line. Resolved on every page render based on the visitor\'s language. Example:' . "\n" .
+			'`default=An editorial guide to the Lake District, Yorkshire Dales, and Eden Valley.`' . "\n" .
+			'`de=Ein redaktioneller Leitfaden zum Lake District, den Yorkshire Dales und dem Eden Valley.`'
+		);
+		$f->rows = 4;
+		$f->value = $this->get('jsonld_org_description_map');
 		$f->columnWidth = 50;
 		$fs->add($f);
 
