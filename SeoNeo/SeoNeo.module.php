@@ -65,7 +65,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.5.0',
+			'version'  => '1.5.1',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -103,6 +103,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'default_og_type'  => 'website',
 			'og_default_locale' => 'en_US',
 			'og_locale_map'    => '',
+			'hreflang_default' => 'en',
+			'hreflang_map'     => '',
 			'twitter_site'     => '',
 			'twitter_creator'  => '',
 			'verify_google'    => '',
@@ -677,7 +679,47 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	protected function getOgLocaleMap(): array {
-		$text = (string) $this->get('og_locale_map');
+		return $this->parseLanguageMap((string) $this->get('og_locale_map'));
+	}
+
+	/**
+	 * BCP47 hreflang code (e.g. `en`, `de`, `en-GB`) for the given language.
+	 *
+	 * ProcessWire stores the default language under the system-locked name
+	 * `default`, which is *not* a valid BCP47 tag. This method maps PW's
+	 * internal language names to the codes search engines actually expect.
+	 *
+	 * Resolution order:
+	 *
+	 * 1. `hreflang_map` config entry for the language's name (highest precedence).
+	 * 2. If the name is `default`, the `hreflang_default` config value (defaults to `en`).
+	 * 3. Otherwise the language's own name, sanitised.
+	 *
+	 * The method is hookable so downstream sites can override per-language
+	 * without forking the module — e.g. `$wire->addHookAfter('SeoNeo::getHreflangCode', ...)`.
+	 *
+	 * @param Language|null $lang If null, uses the current request language.
+	 */
+	public function ___getHreflangCode($lang = null): string {
+		$name = $this->resolveLanguageName($lang);
+		$map = $this->getHreflangMap();
+		if($name !== '' && isset($map[$name])) return $map[$name];
+		if($name === 'default' || $name === '') {
+			return (string) ($this->get('hreflang_default') ?: 'en');
+		}
+		return (string) $this->wire('sanitizer')->name($name);
+	}
+
+	protected function getHreflangMap(): array {
+		return $this->parseLanguageMap((string) $this->get('hreflang_map'));
+	}
+
+	/**
+	 * Parse a textarea-style `key=value` map into a PHP array. Lines that are
+	 * blank, comment-only (`#`), or missing the `=` separator are skipped.
+	 * Shared by `getOgLocaleMap()` and `getHreflangMap()`.
+	 */
+	protected function parseLanguageMap(string $text): array {
 		if($text === '') return [];
 		$map = [];
 		foreach(preg_split('/\r?\n/', $text) as $line) {
@@ -1050,7 +1092,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			if(!$page->viewable($lang)) continue;
 			$href = $this->buildLanguageUrl($page, $lang, $pageNum, $segmentStr);
 			if($href === '') continue;
-			$code = $this->wire('sanitizer')->name($lang->name);
+			$code = $this->getHreflangCode($lang);
+			if($code === '') continue;
 			$out[] = '<link rel="alternate" hreflang="' . $this->esc($code) . '" href="' . $this->esc($href) . '">';
 			if($defaultLang && $lang->id === $defaultLang->id) $defaultHref = $href;
 		}
@@ -1203,47 +1246,21 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			}
 		};
 
-		// Resolve a PW field's human label for a given field name. Handles
-		// dotted paths (uses the first segment) and the * ancestor-walk prefix.
-		// Returns null when no matching field is found, so callers can fall back.
-		$getFieldLabel = function(string $fieldName): ?string {
-			if($fieldName === '') return null;
-			if(strncmp($fieldName, '*', 1) === 0) $fieldName = ltrim(substr($fieldName, 1));
-			$first = $fieldName;
-			$dot = strpos($first, '.');
-			if($dot !== false) $first = substr($first, 0, $dot);
-			$field = $this->wire('fields')->get($first);
-			if(!$field) return null;
-			$label = '';
-			if(method_exists($field, 'getLabel')) $label = (string) $field->getLabel();
-			if($label === '') $label = (string) $field->label;
-			return $label !== '' ? $label : null;
-		};
-
-		// Track field names already added so duplicates are silently skipped.
-		// The same real field can appear as the primary, in the smart map, and
-		// as the page-title fallback — we only show it once, at its earliest
-		// position in the resolution order.
-		$seenFieldNames = [];
-
 		// Step 1: primary SEO field
 		$primaryField = $this->get('role_' . $key) ?: ('seoneo_' . $key);
 		$primaryValue = $this->readField($page, $primaryField);
-		$primaryLabelText = $getFieldLabel($primaryField) ?: $primaryField;
-		$seenFieldNames[$primaryField] = true;
 		$step = [
-			'label'        => $primaryLabelText . ' (' . $primaryField . ')',
-			'labelText'    => $primaryLabelText,
-			'displayName'  => $primaryField,
-			'fieldName'    => $primaryField,
-			'value'        => $primaryValue,
-			'winner'       => false,
-			'type'         => 'primary',
-			'inheritable'  => false,
-			'inheritedSuffix' => '',
+			'label'      => $primaryField,
+			'fieldName'  => $primaryField,
+			'value'      => $primaryValue,
+			'winner'     => false,
+			'type'       => 'primary',
+			'inheritable' => false,
 		];
 		$markWinner($step);
 		$steps[] = $step;
+
+		if($winnerFound) return $steps;
 
 		// Step 2: smart-map fields
 		$map = $this->getSmartMap();
@@ -1259,10 +1276,6 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 					$fieldName = ltrim(substr($rawField, 1));
 				}
 
-				// Skip fields already represented in the chain
-				if(isset($seenFieldNames[$fieldName])) continue;
-				$seenFieldNames[$fieldName] = true;
-
 				$val = $this->readSmartMapValue($page, $fieldName);
 
 				// Ancestor-walk: try parents if the * prefix is set and page value is empty
@@ -1275,60 +1288,49 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 					}
 				}
 
-				$labelText = $getFieldLabel($fieldName) ?: $fieldName;
-				$inheritedSuffix = '';
-				if($inheritable) $inheritedSuffix = $fromAncestor ? '(inherited)' : '(inheritable)';
-
-				$labelStr = $labelText . ' (' . $fieldName . ')';
-				if($inheritedSuffix !== '') $labelStr .= ' ' . $inheritedSuffix;
+				$label = $fieldName;
+				if($inheritable) $label = $fieldName . ($fromAncestor ? ' (inherited)' : ' (inheritable)');
 
 				$step = [
-					'label'        => $labelStr,
-					'labelText'    => $labelText,
-					'displayName'  => $fieldName,
-					'fieldName'    => $rawField,
-					'value'        => $val,
-					'winner'       => false,
-					'type'         => 'smart_map',
-					'inheritable'  => $inheritable,
-					'inheritedSuffix' => $inheritedSuffix,
+					'label'      => $label,
+					'fieldName'  => $rawField,
+					'value'      => $val,
+					'winner'     => false,
+					'type'       => 'smart_map',
+					'inheritable' => $inheritable,
 				];
 				$markWinner($step);
 				$steps[] = $step;
+
+				if($winnerFound) return $steps;
 			}
 		}
 
 		// Step 3: template default
 		$tplDefault = $this->renderTemplateDefault($page, $key);
 		$step = [
-			'label'        => 'Template default',
-			'labelText'    => 'Template default',
-			'displayName'  => '',
-			'fieldName'    => 'template_default',
-			'value'        => $tplDefault,
-			'winner'       => false,
-			'type'         => 'template_default',
-			'inheritable'  => false,
-			'inheritedSuffix' => '',
+			'label'      => 'template default',
+			'fieldName'  => 'template_default',
+			'value'      => $tplDefault,
+			'winner'     => false,
+			'type'       => 'template_default',
+			'inheritable' => false,
 		];
 		$markWinner($step);
 		$steps[] = $step;
 
-		// Step 4: page title (title key only) — skip if `title` already appeared
-		// in the smart map (it would be a duplicate of the same field).
-		if($key === 'title' && !isset($seenFieldNames['title'])) {
+		if($winnerFound) return $steps;
+
+		// Step 4: page title (title key only)
+		if($key === 'title') {
 			$pageTitle = (string) $page->title;
-			$titleLabel = $getFieldLabel('title') ?: 'Page title';
 			$step = [
-				'label'        => $titleLabel . ' (title)',
-				'labelText'    => $titleLabel,
-				'displayName'  => 'title',
-				'fieldName'    => 'title',
-				'value'        => $pageTitle,
-				'winner'       => false,
-				'type'         => 'page_title',
-				'inheritable'  => false,
-				'inheritedSuffix' => '',
+				'label'      => 'page title',
+				'fieldName'  => 'title',
+				'value'      => $pageTitle,
+				'winner'     => false,
+				'type'       => 'page_title',
+				'inheritable' => false,
 			];
 			$markWinner($step);
 			$steps[] = $step;
@@ -1918,6 +1920,30 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		);
 		$f->rows = 4;
 		$f->value = $this->get('og_locale_map');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'hreflang_default';
+		$f->label = $this->_('Default hreflang code');
+		$f->description = $this->_('ProcessWire stores the default language under the system-locked name `default`, which is not a valid BCP47 hreflang tag — Google ignores `<link rel="alternate" hreflang="default">` entirely. SEO NEO maps the default language to this code. Use a [BCP47](https://en.wikipedia.org/wiki/IETF_language_tag) language tag (`en`, `en-GB`, `de-AT`, `fr-CA`).');
+		$f->placeholder = 'en';
+		$f->value = $this->get('hreflang_default') ?: 'en';
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$f = $modules->get('InputfieldTextarea');
+		$f->name = 'hreflang_map';
+		$f->label = $this->_('Hreflang map for languages');
+		$f->description = $this->_(
+			'Optional. Map ProcessWire language names to hreflang codes, one per line. Overrides the default above for the listed language; non-listed languages use their own name. Example:' . "\n" .
+			'`default=en-GB`' . "\n" .
+			'`de=de-AT`' . "\n" .
+			'`fr=fr-CA`' . "\n" .
+			'Used in `<link rel="alternate" hreflang="…">` tags emitted on every page.'
+		);
+		$f->rows = 4;
+		$f->value = $this->get('hreflang_map');
 		$f->columnWidth = 50;
 		$fs->add($f);
 

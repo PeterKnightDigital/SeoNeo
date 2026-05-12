@@ -1,7 +1,7 @@
 {
   "name": "SeoNeo",
   "title": "SeoNeo",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "summary": "Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.",
   "href": "https://github.com/PeterKnightDigital/SeoNeo",
   "author": "Peter Knight Digital",

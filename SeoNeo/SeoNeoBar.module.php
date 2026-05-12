@@ -21,7 +21,7 @@ class SeoNeoBar extends WireData implements Module {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo Bar',
-			'version'  => '1.1.1',
+			'version'  => '1.1.2',
 			'summary'  => 'Frontend admin bar showing resolved SEO data for the current page.',
 			'icon'     => 'bar-chart',
 			'autoload' => true,
@@ -264,6 +264,9 @@ class SeoNeoBar extends WireData implements Module {
 		$langs = $this->wire('languages');
 		if(!$langs || count($langs) < 2) return [];
 
+		/** @var SeoNeo $module */
+		$module = $this->wire('modules')->get('SeoNeo');
+
 		$out  = [];
 		$user = $this->wire('user');
 		$orig = $user->language;
@@ -271,8 +274,12 @@ class SeoNeoBar extends WireData implements Module {
 			foreach($langs as $lang) {
 				if(!$page->viewable($lang)) continue;
 				$user->language = $lang;
+				$code = $module && method_exists($module, 'getHreflangCode')
+					? $module->getHreflangCode($lang)
+					: $this->wire('sanitizer')->name($lang->name);
+				if($code === '') continue;
 				$out[] = [
-					'code' => $this->wire('sanitizer')->name($lang->name),
+					'code' => $code,
 					'url'  => (string) $page->httpUrl,
 					'name' => (string) $lang->title ?: $lang->name,
 				];
