@@ -147,14 +147,22 @@
 	display: block;
 }
 
-/* Popover container */
+/* Popover container.
+ *
+ * Positioned with `position: fixed` because the popover is portalled to
+ * <body> at open time (see SeoNeo.js → injectChainIcon and positionPopoverFor).
+ * `top` / `left` are written from JS using the trigger button's viewport rect.
+ * Portalling avoids any ancestor with overflow / transform / contain clipping
+ * or scrolling the popover — which is what the PW Uikit admin theme does on
+ * every Inputfield wrap.
+ */
 .seoneo-chain-popover {
-	position: absolute;
-	top: calc(100% + 6px);
-	left: 0;
-	z-index: 9999;
+	position: fixed;
+	z-index: 100000;
 	min-width: 260px;
 	max-width: 380px;
+	max-height: calc(100vh - 24px);
+	overflow-y: auto;
 	background: #fff;
 	border: 1px solid #d1d5db;
 	border-radius: 8px;

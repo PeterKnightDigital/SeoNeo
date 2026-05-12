@@ -172,6 +172,41 @@
 		if (e.key === 'Escape') closeOpenPopover();
 	});
 
+	// Close on viewport changes — the popover is positioned from a viewport-rect
+	// snapshot of the icon button; rather than re-position on every scroll tick
+	// we just close (matches native <select> semantics, much cheaper).
+	window.addEventListener('scroll', function() { closeOpenPopover(); }, true);
+	window.addEventListener('resize', function() { closeOpenPopover(); });
+
+	// Anchor a body-portalled popover to its trigger button using the button's
+	// viewport rect. Clamps inside the viewport and flips above the button when
+	// there isn't room below. Requires `popover.hidden = false` before calling
+	// so we can measure offsetWidth / offsetHeight.
+	function positionPopoverFor(btn, popover) {
+		var rect = btn.getBoundingClientRect();
+		var vw = window.innerWidth || d.documentElement.clientWidth;
+		var vh = window.innerHeight || d.documentElement.clientHeight;
+		var gap = 6;
+		var margin = 8;
+
+		var ph = popover.offsetHeight;
+		var pw = popover.offsetWidth;
+
+		var top = rect.bottom + gap;
+		var left = rect.left;
+
+		// Flip above the button if there isn't room below
+		if (top + ph > vh - margin && (rect.top - ph - gap) > margin) {
+			top = rect.top - ph - gap;
+		}
+		// Clamp horizontally inside viewport
+		if (left + pw > vw - margin) left = Math.max(margin, vw - pw - margin);
+		if (left < margin) left = margin;
+
+		popover.style.top = top + 'px';
+		popover.style.left = left + 'px';
+	}
+
 	function buildPopoverHtml(chain) {
 		var html = '<ol class="seoneo-chain-list" role="list">';
 		for (var i = 0; i < chain.length; i++) {
@@ -247,6 +282,7 @@
 		popover.className = 'seoneo-chain-popover';
 		popover.setAttribute('role', 'dialog');
 		popover.setAttribute('aria-label', 'Fallback chain for ' + fieldName);
+		popover.setAttribute('data-fieldname', fieldName);
 		popover.hidden = true;
 		popover.innerHTML = '<div class="seoneo-chain-header">Fallback chain</div>' + buildPopoverHtml(chain);
 
@@ -259,6 +295,7 @@
 			if (!isOpen) {
 				btn.setAttribute('aria-expanded', 'true');
 				popover.hidden = false;
+				positionPopoverFor(btn, popover);
 				_openPopover = btn;
 			}
 		});
@@ -268,10 +305,22 @@
 		var primaryInput = primaryInputs[0] || null;
 		attachPromoteHandlers(popover, primaryInput, chain);
 
-		// Insert button after the label text, popover after the label element
+		// Insert button inside the label (so it sits next to the field title),
+		// but portal the popover to <body> so no ancestor with overflow:hidden,
+		// overflow:auto, transform, filter, or contain can clip or scroll it.
+		// The PW Uikit admin theme wraps every Inputfield in stacks that do
+		// exactly that, which is what caused the popover to render with a
+		// scrollbar instead of floating above the field. Position is then set
+		// at open time from the button's viewport rect.
 		label.appendChild(btn);
-		label.style.position = 'relative';
-		label.appendChild(popover);
+
+		// Clean up any stale popover for this field name (defensive: handles
+		// AJAX-reloaded inputfields where the wrap was destroyed and rebuilt
+		// but the orphaned body-portalled popover wasn't garbage collected).
+		var stale = d.body.querySelectorAll('.seoneo-chain-popover[data-fieldname="' + fieldName + '"]');
+		for (var s = 0; s < stale.length; s++) stale[s].parentNode.removeChild(stale[s]);
+
+		d.body.appendChild(popover);
 
 		// ── Ghost text (below the input) ─────────────────
 		injectGhostText(wrap, fieldName, chain, primaryInput);
