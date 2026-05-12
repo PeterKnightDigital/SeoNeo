@@ -21,7 +21,7 @@ class SeoNeoBar extends WireData implements Module {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo Bar',
-			'version'  => '1.1.0',
+			'version'  => '1.1.1',
 			'summary'  => 'Frontend admin bar showing resolved SEO data for the current page.',
 			'icon'     => 'bar-chart',
 			'autoload' => true,
@@ -106,7 +106,31 @@ class SeoNeoBar extends WireData implements Module {
 			$this->sendJson(['error' => 'SeoNeo module not available'], 500);
 		}
 
-		$this->sendJson($this->buildPageData($page, $module));
+		// Spoof the live page's URL context onto $input for the duration of
+		// the data build. The bar's AJAX endpoint is itself a URL hook at
+		// /seoneo-bar-data/, so left as-is $input->urlSegmentStr() reports
+		// "seoneo-bar-data" — which the canonical / og:url / twitter:url /
+		// hreflang resolvers in SeoNeo would then dutifully append to every
+		// URL they produce. The bar passes the page's actual URL context
+		// (captured at bar-injection time in renderBar()) so the resolvers
+		// see what they would see during the page's own render pass.
+		$frontendSegmentStr = trim((string) $input->get('urlSegmentStr'), '/');
+		$frontendPageNum    = max(1, (int) $input->get('pageNum'));
+
+		$savedSegments = $input->urlSegments();
+		$savedPageNum  = $input->pageNum();
+
+		$input->setUrlSegments($frontendSegmentStr === '' ? [] : explode('/', $frontendSegmentStr));
+		$input->setPageNum($frontendPageNum);
+
+		try {
+			$data = $this->buildPageData($page, $module);
+		} finally {
+			$input->setUrlSegments(is_array($savedSegments) ? array_values($savedSegments) : []);
+			$input->setPageNum($savedPageNum);
+		}
+
+		$this->sendJson($data);
 	}
 
 	// ────────────────────────────────────────────────────────────────────
@@ -271,6 +295,18 @@ class SeoNeoBar extends WireData implements Module {
 		$dataUrl = $config->urls->root . 'seoneo-bar-data/';
 		$esc     = fn($s) => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
+		// Snapshot the live request's URL context for the AJAX endpoint to
+		// echo back when it computes URL-segment-aware values (canonical,
+		// og:url, twitter:url, hreflang). At this moment $input reflects the
+		// page the editor is actually viewing; by the time the drawer fetch
+		// fires, $input will instead reflect /seoneo-bar-data/, which is the
+		// wrong context for those resolvers.
+		$input = $this->wire('input');
+		$urlSegmentStr = method_exists($input, 'urlSegmentStr')
+			? trim((string) $input->urlSegmentStr(), '/')
+			: '';
+		$pageNum = max(1, (int) $input->pageNum());
+
 		$css = '<link rel="stylesheet" href="' . $esc($url . 'assets/SeoNeoBar.css') . '?v=' . $esc($v) . '">';
 		$js  = '<script src="' . $esc($url . 'assets/SeoNeoBar.js') . '?v=' . $esc($v) . '" defer></script>';
 
@@ -278,6 +314,8 @@ class SeoNeoBar extends WireData implements Module {
 			'pageId'   => $page->id,
 			'dataUrl'  => $dataUrl,
 			'editUrl'  => $editUrl,
+			'urlSegmentStr' => $urlSegmentStr,
+			'pageNum'       => $pageNum,
 		], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
 		$configScript = '<script>window.SeoNeoBarConfig = ' . $jsConfig . ';</script>';

@@ -37,7 +37,15 @@
     if (_dataCache) return Promise.resolve(_dataCache);
     if (_dataPromise) return _dataPromise;
 
-    _dataPromise = fetch(DATA_URL + '?id=' + PAGE_ID, {
+    // Forward the live page's URL context so the AJAX endpoint can compute
+    // canonical / og:url / hreflang against the right URL — the endpoint
+    // itself lives at /seoneo-bar-data/, so without these params its
+    // ambient $input->urlSegmentStr() would leak into every resolved URL.
+    var qs = '?id=' + encodeURIComponent(PAGE_ID);
+    if (cfg.urlSegmentStr) qs += '&urlSegmentStr=' + encodeURIComponent(cfg.urlSegmentStr);
+    if (cfg.pageNum && cfg.pageNum > 1) qs += '&pageNum=' + encodeURIComponent(cfg.pageNum);
+
+    _dataPromise = fetch(DATA_URL + qs, {
       method: 'GET',
       credentials: 'same-origin',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
