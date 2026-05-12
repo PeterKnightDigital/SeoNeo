@@ -21,7 +21,7 @@ class SeoNeoBar extends WireData implements Module {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo Bar',
-			'version'  => '1.2.0',
+			'version'  => '1.3.0',
 			'summary'  => 'Frontend admin bar showing resolved SEO data for the current page.',
 			'icon'     => 'bar-chart',
 			'autoload' => true,
@@ -177,11 +177,32 @@ class SeoNeoBar extends WireData implements Module {
 
 		// BCP47 language code for the page's current language
 		$lang = $this->wire('user')->language;
-		$langCode = method_exists($module, 'getHreflangCode') ? $module->getHreflangCode($lang) : 'en';
+		$langCode = method_exists($module, '___getHreflangCode') ? $module->getHreflangCode($lang) : 'en';
 
 		// Word count: count whitespace-separated tokens in the body field
 		// after stripping HTML. Returns null when the template has no body.
 		$wordCount = $this->computeWordCount($page);
+
+		// Full JSON-LD graph for the Schema panel and the Publisher row.
+		// Use method_exists on the underscored hookable name — PW dispatches
+		// `getJsonLd(...)` via `__call` so `method_exists($module, 'getJsonLd')`
+		// returns false even when the method is callable.
+		$jsonLd = method_exists($module, '___getJsonLd') ? $module->getJsonLd($page) : [];
+
+		// Publisher (read from the JSON-LD Organization / Person node)
+		$publisher = $this->extractPublisher($jsonLd);
+
+		// X-Robots-Tag: try a HEAD request to the page itself so we report
+		// what the server actually emits (frameworks, security plugins, or
+		// CDN config can set this header outside of SEO NEO's control).
+		$xRobotsTag = $this->probeXRobotsTag($resolvedUrl);
+
+		// Robots.txt and Sitemap shortcuts
+		$rootUrl = (string) $this->wire('config')->urls->httpRoot;
+		$server = [
+			'robotsTxtUrl' => rtrim($rootUrl, '/') . '/robots.txt',
+			'sitemapUrl'   => rtrim($rootUrl, '/') . '/sitemap.xml',
+		];
 
 		// Twitter card type
 		$twitterCard = $resolvedOgImage ? 'summary_large_image' : 'summary';
@@ -228,9 +249,13 @@ class SeoNeoBar extends WireData implements Module {
 				'value'    => $resolvedRobots,
 				'noindex'  => $noindex,
 				'nofollow' => $nofollow,
+				'xRobotsTag' => $xRobotsTag,
 			],
 			'lang' => $langCode,
 			'wordCount' => $wordCount,
+			'publisher' => $publisher,
+			'server'    => $server,
+			'jsonLd'    => $jsonLd,
 			'og' => [
 				'title'       => $resolvedOgTitle,
 				'description' => $resolvedDesc,
@@ -315,6 +340,54 @@ class SeoNeoBar extends WireData implements Module {
 	}
 
 	/**
+	 * Extract a `{name, url, type}` publisher summary from the JSON-LD
+	 * `@graph`. Used to render the Publisher row in the Overview panel.
+	 * Returns null when the graph has no Organization / Person node.
+	 */
+	protected function extractPublisher(array $jsonLd): ?array {
+		if(empty($jsonLd['@graph']) || !is_array($jsonLd['@graph'])) return null;
+		$publisherTypes = ['Organization', 'LocalBusiness', 'NewsMediaOrganization', 'EducationalOrganization', 'Person'];
+		foreach($jsonLd['@graph'] as $node) {
+			if(!is_array($node)) continue;
+			$type = $node['@type'] ?? '';
+			if(!in_array($type, $publisherTypes, true)) continue;
+			$name = (string) ($node['name'] ?? '');
+			if($name === '') continue;
+			return [
+				'name' => $name,
+				'url'  => (string) ($node['url'] ?? ''),
+				'type' => $type,
+			];
+		}
+		return null;
+	}
+
+	/**
+	 * HEAD-probe the page URL to read its `X-Robots-Tag` response header,
+	 * if any. Returns an empty string when the header isn't present or the
+	 * probe fails. Times out aggressively (1.5s) so an unreachable backend
+	 * never holds up the bar drawer.
+	 */
+	protected function probeXRobotsTag(string $url): string {
+		if($url === '') return '';
+		$ctx = stream_context_create([
+			'http'  => ['method' => 'HEAD', 'timeout' => 1.5, 'ignore_errors' => true],
+			'https' => ['method' => 'HEAD', 'timeout' => 1.5, 'ignore_errors' => true],
+			'ssl'   => ['verify_peer' => false, 'verify_peer_name' => false],
+		]);
+		$prevTrack = ini_get('user_agent');
+		$headers = @get_headers($url, true, $ctx);
+		if(!is_array($headers)) return '';
+		foreach($headers as $name => $value) {
+			if(!is_string($name)) continue;
+			if(strcasecmp($name, 'X-Robots-Tag') !== 0) continue;
+			if(is_array($value)) return implode(', ', $value);
+			return (string) $value;
+		}
+		return '';
+	}
+
+	/**
 	 * Count words in the page body, after stripping HTML. Returns null if
 	 * the template has no body-like field, so the bar can render "n/a".
 	 */
@@ -349,7 +422,7 @@ class SeoNeoBar extends WireData implements Module {
 			foreach($langs as $lang) {
 				if(!$page->viewable($lang)) continue;
 				$user->language = $lang;
-				$code = $module && method_exists($module, 'getHreflangCode')
+				$code = $module && method_exists($module, '___getHreflangCode')
 					? $module->getHreflangCode($lang)
 					: $this->wire('sanitizer')->name($lang->name);
 				if($code === '') continue;
@@ -459,6 +532,18 @@ class SeoNeoBar extends WireData implements Module {
     >
       {$this->svgShare()}
       <span class="pkd-seoneo-bar__btn-label">Open Graph</span>
+    </button>
+
+    <button
+      class="pkd-seoneo-bar__btn"
+      type="button"
+      data-panel="schema"
+      aria-expanded="false"
+      aria-controls="pkd-seoneo-drawer"
+      title="Schema (JSON-LD)"
+    >
+      {$this->svgSchema()}
+      <span class="pkd-seoneo-bar__btn-label">Schema</span>
     </button>
 
     <button
@@ -604,5 +689,9 @@ HTML;
 
 	protected function svgImages(): string {
 		return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+	}
+
+	protected function svgSchema(): string {
+		return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="6" y2="17"/><line x1="12" y1="7" x2="18" y2="17"/></svg>';
 	}
 }

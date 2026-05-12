@@ -131,6 +131,7 @@
       .then(function (data) {
         switch (panelId) {
           case 'seo':      drawerBody.innerHTML = renderSeoPanel(data);      break;
+          case 'schema':   drawerBody.innerHTML = renderSchemaPanel(data);   break;
           case 'headings': drawerBody.innerHTML = renderHeadingsPanel(data); break;
           case 'og':       drawerBody.innerHTML = renderOgPanel(data);       break;
           case 'links':    drawerBody.innerHTML = renderLinksPanel();        break;
@@ -204,20 +205,46 @@
     // ── Page / language signals ───────────────────────────────────────
     var signalsHtml = '';
     if (data.lang) {
-      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Lang</span>' +
-        '<span class="pkd-seoneo-kv__value">' + esc(data.lang) + '</span></div>';
+      signalsHtml += kvRow('Lang', esc(data.lang));
     }
     if (data.wordCount !== null && data.wordCount !== undefined) {
-      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Word count</span>' +
-        '<span class="pkd-seoneo-kv__value">' + esc(String(data.wordCount)) + '</span></div>';
+      signalsHtml += kvRow('Word count', esc(String(data.wordCount)));
     } else {
-      signalsHtml += '<div class="pkd-seoneo-kv"><span class="pkd-seoneo-kv__key">Word count</span>' +
-        '<span class="pkd-seoneo-kv__value pkd-seoneo-kv__value--missing">n/a</span></div>';
+      signalsHtml += kvRow('Word count', '<span class="pkd-seoneo-kv__value--missing">n/a</span>');
+    }
+    if (data.publisher && data.publisher.name) {
+      var pubVal = esc(data.publisher.name) +
+        ' <span class="pkd-seoneo-kv__sub">(' + esc(data.publisher.type || 'Organization') + ')</span>';
+      signalsHtml += kvRow('Publisher', pubVal);
+    } else {
+      signalsHtml += kvRow('Publisher', '<span class="pkd-seoneo-kv__value--missing">Missing</span>');
     }
     if (signalsHtml) html += section('Signals', signalsHtml);
 
     // ── Robots section ────────────────────────────────────────────────
-    html += section('Robots', renderRobots(data.robots));
+    var robotsHtml = renderRobots(data.robots);
+    var xrt = data.robots && data.robots.xRobotsTag;
+    if (xrt) {
+      robotsHtml += kvRow('X-Robots-Tag', esc(xrt));
+    } else {
+      robotsHtml += kvRow('X-Robots-Tag', '<span class="pkd-seoneo-kv__value--missing">Not set</span>');
+    }
+    html += section('Robots', robotsHtml);
+
+    // ── Server / Tools ────────────────────────────────────────────────
+    if (data.server && (data.server.robotsTxtUrl || data.server.sitemapUrl)) {
+      var toolsHtml = '<div class="pkd-seoneo-tools">';
+      if (data.server.robotsTxtUrl) {
+        toolsHtml += '<a class="pkd-seoneo-tools__link" target="_blank" rel="noopener" href="' +
+          esc(data.server.robotsTxtUrl) + '">robots.txt</a>';
+      }
+      if (data.server.sitemapUrl) {
+        toolsHtml += '<a class="pkd-seoneo-tools__link" target="_blank" rel="noopener" href="' +
+          esc(data.server.sitemapUrl) + '">sitemap.xml</a>';
+      }
+      toolsHtml += '</div>';
+      html += section('Tools', toolsHtml);
+    }
 
     // ── Keywords (always rendered; placeholder when empty) ────────────
     var kwHtml;
@@ -303,6 +330,79 @@
       html += '<li class="pkd-seoneo-tag-list__item"><a href="' + esc(alt.url) + '" target="_blank" rel="noopener">' + esc(alt.code) + ' — ' + esc(alt.name) + '</a></li>';
     });
     html += '</ul>';
+    return html;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Schema (JSON-LD) panel
+  // ─────────────────────────────────────────────────────────────────────
+
+  function renderSchemaPanel(data) {
+    var graph = data && data.jsonLd && Array.isArray(data.jsonLd['@graph'])
+      ? data.jsonLd['@graph']
+      : [];
+
+    if (!graph.length) {
+      return emptyState(
+        'No JSON-LD on this page',
+        'Enable structured data in SEO NEO module config under "Structured data (JSON-LD)" to start emitting Schema.org graphs.'
+      );
+    }
+
+    // Summary badge row
+    var typeCounts = {};
+    graph.forEach(function (node) {
+      var t = node['@type'] || 'Unknown';
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    var summary = '<div class="pkd-seoneo-badge-row">' +
+      badge('good', svgCheck() + ' ' + graph.length + ' nodes') +
+      Object.keys(typeCounts).map(function (t) {
+        var n = typeCounts[t];
+        return badge('neutral', esc(t) + (n > 1 ? ' × ' + n : ''));
+      }).join('') +
+    '</div>';
+
+    var html = section('Summary', summary);
+
+    // Per-node disclosure (expanded by default for the first node)
+    var nodesHtml = '';
+    graph.forEach(function (node, idx) {
+      var type = node['@type'] || 'Unknown';
+      var nodeName = node.name || node.headline || (node['@id'] || '');
+      var open = idx === 0 ? ' open' : '';
+      var pretty = JSON.stringify(node, null, 2);
+      var schemaUrl = 'https://schema.org/' + encodeURIComponent(String(type));
+
+      nodesHtml +=
+        '<details class="pkd-seoneo-schema__node"' + open + '>' +
+          '<summary class="pkd-seoneo-schema__summary">' +
+            '<span class="pkd-seoneo-schema__type">' + esc(String(type)) + '</span>' +
+            (nodeName
+              ? '<span class="pkd-seoneo-schema__name">' + esc(String(nodeName)) + '</span>'
+              : '') +
+            '<a class="pkd-seoneo-schema__doc" href="' + esc(schemaUrl) + '" target="_blank" rel="noopener" ' +
+              'title="View ' + esc(String(type)) + ' on schema.org" onclick="event.stopPropagation();">↗</a>' +
+          '</summary>' +
+          '<pre class="pkd-seoneo-schema__code">' + esc(pretty) + '</pre>' +
+        '</details>';
+    });
+
+    html += section('Graph', nodesHtml);
+
+    // Validator links
+    var pageUrl = data.url && data.url.value ? data.url.value : '';
+    if (pageUrl) {
+      var rich  = 'https://search.google.com/test/rich-results?url=' + encodeURIComponent(pageUrl);
+      var sval  = 'https://validator.schema.org/#url=' + encodeURIComponent(pageUrl);
+      html += section('Validate',
+        '<div class="pkd-seoneo-tools">' +
+          '<a class="pkd-seoneo-tools__link" target="_blank" rel="noopener" href="' + esc(rich) + '">Google Rich Results Test</a>' +
+          '<a class="pkd-seoneo-tools__link" target="_blank" rel="noopener" href="' + esc(sval) + '">Schema.org Validator</a>' +
+        '</div>'
+      );
+    }
+
     return html;
   }
 
@@ -710,6 +810,13 @@
     return '<div class="pkd-seoneo-drawer__section">' +
       '<div class="pkd-seoneo-drawer__section-title">' + esc(title) + '</div>' +
       content +
+    '</div>';
+  }
+
+  function kvRow(key, valueHtml) {
+    return '<div class="pkd-seoneo-kv">' +
+      '<span class="pkd-seoneo-kv__key">' + esc(key) + '</span>' +
+      '<span class="pkd-seoneo-kv__value">' + valueHtml + '</span>' +
     '</div>';
   }
 

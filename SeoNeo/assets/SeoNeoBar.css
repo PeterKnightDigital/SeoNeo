@@ -923,6 +923,121 @@ body.pkd-seoneo-body-offset {
   font-style: italic;
 }
 
+.pkd-seoneo-kv__sub {
+  color: var(--pkd-seoneo-color-muted);
+  font-size: var(--pkd-seoneo-fs-xs);
+  margin-left: 4px;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   Tool links (robots.txt, sitemap.xml, validator shortcuts)
+   ───────────────────────────────────────────────────────────────────── */
+
+.pkd-seoneo-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pkd-seoneo-sp-2);
+}
+
+.pkd-seoneo-tools__link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--pkd-seoneo-color-border);
+  border-radius: 999px;
+  background: var(--pkd-seoneo-color-card);
+  color: var(--pkd-seoneo-color-link);
+  font-size: var(--pkd-seoneo-fs-sm);
+  text-decoration: none;
+  transition: background 120ms, border-color 120ms;
+}
+
+.pkd-seoneo-tools__link:hover {
+  background: var(--pkd-seoneo-color-hover);
+  border-color: var(--pkd-seoneo-color-link);
+  text-decoration: none;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   Schema (JSON-LD) panel
+   ───────────────────────────────────────────────────────────────────── */
+
+.pkd-seoneo-schema__node {
+  border: 1px solid var(--pkd-seoneo-color-border);
+  border-radius: var(--pkd-seoneo-radius-sm);
+  margin-bottom: var(--pkd-seoneo-sp-2);
+  background: var(--pkd-seoneo-color-card);
+}
+
+.pkd-seoneo-schema__node[open] {
+  border-color: var(--pkd-seoneo-color-link);
+}
+
+.pkd-seoneo-schema__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--pkd-seoneo-sp-2);
+  padding: var(--pkd-seoneo-sp-2) var(--pkd-seoneo-sp-3);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.pkd-seoneo-schema__summary::-webkit-details-marker { display: none; }
+.pkd-seoneo-schema__summary::marker                  { display: none; }
+
+.pkd-seoneo-schema__summary::before {
+  content: '▸';
+  font-size: 10px;
+  color: var(--pkd-seoneo-color-muted);
+  transition: transform 120ms;
+}
+
+.pkd-seoneo-schema__node[open] > .pkd-seoneo-schema__summary::before {
+  transform: rotate(90deg);
+}
+
+.pkd-seoneo-schema__type {
+  font-weight: 600;
+  color: var(--pkd-seoneo-color-fg);
+  font-size: var(--pkd-seoneo-fs-sm);
+}
+
+.pkd-seoneo-schema__name {
+  color: var(--pkd-seoneo-color-muted);
+  font-size: var(--pkd-seoneo-fs-sm);
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkd-seoneo-schema__doc {
+  color: var(--pkd-seoneo-color-link);
+  text-decoration: none;
+  font-size: var(--pkd-seoneo-fs-sm);
+  padding: 0 4px;
+}
+
+.pkd-seoneo-schema__doc:hover {
+  text-decoration: underline;
+}
+
+.pkd-seoneo-schema__code {
+  margin: 0;
+  padding: var(--pkd-seoneo-sp-3);
+  border-top: 1px solid var(--pkd-seoneo-color-border);
+  background: var(--pkd-seoneo-color-bg);
+  color: var(--pkd-seoneo-color-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--pkd-seoneo-fs-xs);
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────
    Empty / unconfigured state
