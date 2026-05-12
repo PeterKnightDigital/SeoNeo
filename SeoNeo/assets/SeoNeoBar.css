@@ -905,16 +905,20 @@ body.pkd-seoneo-body-offset {
 .pkd-seoneo-kv__key {
   flex: 0 0 auto;
   min-width: 90px;
-  color: var(--pkd-seoneo-drawer-text-muted);
+  color: var(--pkd-seoneo-drawer-text-label);
   text-transform: uppercase;
   font-size: var(--pkd-seoneo-font-xs);
-  letter-spacing: 0.04em;
+  font-family: var(--pkd-seoneo-font);
+  letter-spacing: 0.06em;
   font-weight: var(--pkd-seoneo-weight-semibold);
 }
 
 .pkd-seoneo-kv__value {
   flex: 1 1 auto;
   color: var(--pkd-seoneo-drawer-text);
+  font-size: var(--pkd-seoneo-font-base);
+  font-family: var(--pkd-seoneo-font);
+  line-height: var(--pkd-seoneo-lh-base);
   word-break: break-word;
 }
 
