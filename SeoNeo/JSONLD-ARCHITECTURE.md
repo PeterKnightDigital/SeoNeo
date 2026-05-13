@@ -4,6 +4,8 @@ Design rails for the JSON‑LD subsystem of SeoNeo. This document is the **singl
 
 This is a planning document. No code changes are mandated by merging it; subsequent feature PRs implement it incrementally.
 
+**Stress‑test note (May 2026):** the architecture has been walked end‑to‑end against the structurally‑distinct value shapes that appear in real Schema.org JSON‑LD across the major type families (creative works, organizations + LocalBusiness subtypes, places, events with `eventAttendanceMode` / `eventStatus` enums, products + offers, reviews, actions, jobs, real estate, education, FAQs / how‑tos, site‑structure, identifiers + `PropertyValue`, speakable, time‑aware structures, controlled vocabularies, intersection types, polymorphic property values). The shape‑coverage matrix in **§4.4** records what was tested and how each shape is handled. Future contributors adding first‑class types must check the type's value shapes against §4.4; if a shape isn't there, the resolver / type‑definition contract is missing a feature and that gap is fixed *first*, not absorbed as per‑type bespoke code.
+
 **Companion documents:**
 - `SeoNeo/ROADMAP.md` — tactical editor‑UX work in the admin SEO tab and the SeoNeoBar.
 - `SEO-NEO-FEATURE-BACKLOG.md` (workspace root) — strategic backlog. Sections **J1 / J2** point here for depth.
@@ -62,10 +64,34 @@ Each layer is small; the power comes from composition.
 
 A schema **type definition** declares:
 
-- The Schema.org `@type` (or list of `@type` for sub‑typed nodes, e.g. `["LocalBusiness", "Restaurant"]`).
-- A list of **properties**. For each property: name, expected datatype (Text, URL, Date, ImageObject, Person, nested type, list‑of), required/optional, default source spec.
-- A **default mapping** giving sensible source specs for the common ProcessWire field shapes (so a new install with no per‑template mapping still produces something sensible).
-- A **policy block**: e.g. *"Do not inherit Organization defaults"* (see Person rule, §11).
+- A `@type` value, which may be:
+  - a string literal (e.g. `"Article"`),
+  - a list literal for intersection types (e.g. `["LocalBusiness", "Restaurant"]`), or
+  - a **source spec** — for the case where a single PW template emits one of several Schema.org subtypes based on a field value (e.g. a `publication` template where the editor picks `Article` / `NewsArticle` / `BlogPosting` / `Report` via a select). `@type` is a property like any other; it just happens to control the shape of the node it's on.
+- An optional `extends` reference to another type definition — the parent's property list, default mapping, and policy block are inherited; the child may add new properties or override existing ones. Used by `LocalBusiness extends Organization`, `Restaurant extends LocalBusiness`, `NewsArticle extends Article`, `Episode extends CreativeWork`, and so on. Inheritance is what lets the long tail of Schema.org subtypes be added cheaply without duplicating 20–30 properties per subtype.
+- A list of **properties**. For each property: name, expected datatype, required / optional / conditional, default source spec, and per‑property policy flags (e.g. `auto_wire_to: WebSite` — see §3.4 and §10).
+- A **default mapping** that may include both per‑property source specs *and* **constant sub‑node templates** — fixed JSON‑LD structures with a small number of source‑spec'd holes. Used for things like `WebSite.potentialAction → SearchAction`, where the SearchAction's structure is almost entirely fixed and only the URL template / search-results page URL come from config.
+- A **policy block** declaring per‑type rules: e.g. *"Do not inherit Organization defaults"* (Person — §11), *"Auto‑wire `mainEntity` to the primary page-type node in the graph"* (WebPage — §10), *"Drop this node when `eventAttendanceMode` is `OnlineEventAttendanceMode` and `location` is missing"* (Event), and so on.
+
+**Property datatypes** (closed set):
+
+| Datatype | Notes |
+|---|---|
+| `Text` | HTML‑stripped, whitespace‑collapsed at resolve time. |
+| `URL` | Absolutised at resolve time using the page's URL host (multi‑domain language setups respected). |
+| `Date` / `DateTime` / `Time` | Coerced to ISO‑8601 at resolve time. |
+| `Number` / `Integer` / `Boolean` | Direct. |
+| `Enum<Vocabulary>` | A URL literal from a controlled Schema.org vocabulary (e.g. `ItemAvailability`, `EventStatus`, `EventAttendanceMode`, `DayOfWeek`, `OfferItemCondition`, `Gender`, `BookFormatType`, `MerchantReturnEnumeration`). Editor UI offers a dropdown sourced from the vocabulary; validity panel flags invalid values. The vocabulary is part of the property declaration — `availability: Enum<ItemAvailability>`. |
+| `Image` | Resolves to an `ImageObject` sub‑node. Pageimage is auto‑expanded; URL/Pageimages are also accepted. |
+| `<TypeName>` | Reference to another type definition in the registry. Resolves either inline as a sub‑node or as `{ "@id": "..." }`, per the property's `expand_inline` flag. |
+| `oneOf<[T1, T2, ...]>` | Polymorphic property: the value can be any of the listed datatypes. The resolver picks based on what the source returns. Examples: `Article.author = oneOf<[Person, Organization]>`, `Event.performer = oneOf<[Person, Organization, PerformingGroup]>`, `Recipe.recipeInstructions = oneOf<[Text, List<HowToStep>]>`. The type definition may declare a *resolution rule* (e.g. *"if source page's template is in `jsonld_person_templates`, treat as Person; otherwise Organization"*); without an explicit rule, the resolver inspects the source and matches the first compatible datatype in declaration order. |
+| `List<T>` | Ordered list. Combine with any of the above (`List<Image>`, `List<Enum<DayOfWeek>>`, `List<oneOf<[Person, Organization]>>`). |
+
+**Required / optional / conditional**:
+
+- `required` — the node is dropped from the graph if this property cannot be resolved (developer‑mode warning emitted).
+- `optional` — empty values are simply omitted from the node.
+- `conditional` — required only when another property has a given value. Declarable for the well‑known cases (e.g. `Event.location` required when `eventAttendanceMode` is not `OnlineEventAttendanceMode`). Full conditional logic is **deferred** (§16); v1 ships a small built‑in policy library covering the cases Google flags in Search Console.
 
 First‑class types ship in the module. Sites can register additional types in two supported ways (§13):
 
@@ -112,13 +138,23 @@ The cascade is identical for every property of every type. There is no per‑typ
 
 Responsibilities, in order:
 
-1. Determine the active types for the page: union of (auto‑detected) + (per‑template mapping) + (per‑page extras).
-2. For each type, ask the type definition + cascade + resolver to produce a node.
-3. Assign each node a stable `@id` (§10).
-4. Cross‑reference: where a property is itself a node already in the graph (Article.publisher → Organization, Article.author → Person), use `{ "@id": "..." }` instead of inlining the full sub‑node a second time.
-5. Drop empty / invalid nodes.
-6. Run hooks (§13) at every stage: `getJsonLd` (whole graph), `buildJsonLd<Type>` (per type, already exists for current builders), `resolveJsonLdValue` (per property), `finalizeJsonLdGraph` (last‑chance mutate).
-7. Emit a **single** `<script type="application/ld+json">` containing `{ "@context": "https://schema.org", "@graph": [ ... ] }`, in the active request language. Pretty‑print remains controlled by `jsonld_pretty`.
+1. **Determine active types** for the page: union of (auto‑detected from template) + (per‑template mapping) + (per‑page extras). Resolve any source‑spec'd `@type` properties so the final type list is concrete before graph assembly.
+2. **Build nodes.** For each type, ask the type definition + cascade + resolver to produce a node. Type definitions with `extends` inherit their parent's property list and policies.
+3. **Assign `@id`.** Each node gets a stable `@id` per §10.
+4. **Auto‑wire cross‑references.** A small set of well‑known properties are filled in by the renderer when both endpoints are in the graph, regardless of per‑site mapping:
+   - `WebPage.mainEntity` → primary page‑type node (Article / Product / Event / FAQPage / etc.) on the current page.
+   - `WebPage.isPartOf` → `WebSite`.
+   - `WebPage.breadcrumb` → `BreadcrumbList`.
+   - `Article.publisher` → `Organization`.
+   - `Article.mainEntityOfPage` → `WebPage`.
+   - `Product.brand`, `Event.organizer`, etc. → `Organization` *only when* the per‑template mapping doesn't already supply a more specific value.
+   The full auto‑wire table lives in each type definition's policy block, not as scattered renderer special cases.
+5. **Cross‑reference by `@id`.** Where a property's value is a node already present in the graph, emit `{ "@id": "..." }` instead of inlining the full sub‑node a second time. PageReference targets that point at pages emitting their own JSON‑LD also reference by `@id`.
+6. **Drop invalid / empty nodes.** A node missing a required property is dropped (with a developer‑mode warning); a node whose properties all resolved empty is dropped.
+7. **Sanitise editor‑supplied content.** Nodes added via the per‑page "Extra schema nodes" field are walked recursively: scalars / lists / maps only at the leaves; HTML‑stripped from text values; keys starting with `@reverse`, `@graph`, `@context`, or `@base` rejected; total node depth and node count capped (defaults TBD; conservative). Hook‑supplied nodes are trusted and skip this step.
+8. **Order nodes.** Default order: primary page‑type node first (Article / Product / Event / FAQPage / etc.), then `BreadcrumbList`, then `WebPage`, then `WebSite`, then `Organization`, then anything else in declaration order. Some structured‑data consumers prefer the most‑specific node first; this ordering matches that expectation. Hookable per site.
+9. **Run hooks** at every stage: `getJsonLd` (whole graph), `buildJsonLd<Type>` (per type — already exists for current builders), `resolveJsonLdValue` (per property), `finalizeJsonLdGraph` (last‑chance mutate before serialisation).
+10. **Emit** a **single** `<script type="application/ld+json">` containing `{ "@context": "https://schema.org", "@graph": [ ... ] }`, in the active request language. Pretty‑print remains controlled by `jsonld_pretty`.
 
 ---
 
@@ -157,6 +193,40 @@ P2 types must not require any new resolver capabilities — if they do, the reso
 ### 4.3 P3 — addressed via the Custom type
 
 Anything not in P1/P2. Sites get full Schema.org coverage via the Custom type plus the same source‑spec machinery, with no module changes required. Promotion to first‑class happens when a P3 type proves popular enough to deserve a default mapping.
+
+### 4.4 Schema.org value‑shape coverage
+
+The architecture has been stress‑tested against the structurally‑distinct value shapes that appear in real Schema.org JSON‑LD. Every shape here must be expressible without bespoke per‑type code; if a future Schema.org pattern doesn't fit, **the resolver is missing a feature and is fixed before the type is added** (same gating rule as §4.2).
+
+| Schema.org value shape | Real example | How the architecture handles it |
+|---|---|---|
+| Plain text | `Article.headline`, `Person.name` | `Text` datatype with `field` / `literal` source. HTML‑stripped at resolve time. |
+| URL | `url`, `sameAs`, `image.url` | `URL` datatype with absolutisation. |
+| Date / DateTime | `Article.datePublished`, `Event.startDate` | `Date` / `DateTime` datatype with ISO‑8601 coercion. |
+| Image | `Product.image`, `Person.image`, `Organization.logo` | `Image` datatype; Pageimage auto‑expanded to `ImageObject` (URL, width, height). |
+| Sub‑node by reference | `Article.publisher → Organization`, `WebPage.isPartOf → WebSite` | Auto‑wired by the renderer when both endpoints exist (§3.4). Per‑site `field` / `field_on` source spec where override needed. |
+| Sub‑node from a related page | `Article.author → Person` (PageRef to staff page) | `field` returning a Page; `expand_inline: false` in property declaration → `@id` reference; staff page emits its own Person node with the same `@id`. |
+| List of homogeneous sub‑nodes | `FAQPage.mainEntity → List<Question>`, `Product.offers → List<Offer>` | `iterate` source kind over Repeater / RepeaterMatrix / PageTable / PageArray. |
+| List with per‑item type variation | `HowTo.step → List<HowToStep | HowToSection>`, RepeaterMatrix items mapping to different sub‑schemas | `iterate` with `when matrix_type = "..."` filter (§7.2). |
+| Polymorphic property | `Article.author = Person | Organization`, `Event.performer = Person | Organization | PerformingGroup` | `oneOf` datatype; resolver picks based on what the source returns + an optional resolution rule on the property. |
+| Polymorphic `@type` | One PW template emits Article / NewsArticle / BlogPosting based on a select field | `@type` itself can be a source‑spec'd property in the type definition (§3.1). |
+| Enum (controlled vocabulary URL) | `availability: "https://schema.org/InStock"`, `eventStatus: "https://schema.org/EventScheduled"`, `dayOfWeek: "https://schema.org/Monday"` | `Enum<Vocabulary>` datatype; editor UI offers a dropdown; validity panel flags invalid values. |
+| List of enum values | `OpeningHoursSpecification.dayOfWeek: ["Monday", "Tuesday", ...]` | `List<Enum<DayOfWeek>>`. |
+| Repeated structured items with internal lists | `LocalBusiness.openingHoursSpecification → List<OpeningHoursSpecification>`, each with `dayOfWeek` array, `opens`, `closes`, optional `validFrom` / `validThrough` | `iterate` of sub‑nodes whose properties include `List<Enum<>>` and Date types. |
+| Arbitrary key/value pairs | `Product.additionalProperty: List<PropertyValue>`, `identifier: PropertyValue` (ISBN, GTIN, SKU) | `iterate` with `item_type: PropertyValue` and `item_map: { name, value, propertyID? }`. |
+| Constant sub‑node template with holes | `WebSite.potentialAction → SearchAction` (mostly fixed structure, only URL template configurable) | Type definition embeds a constant sub‑node template with source‑spec'd holes (§3.1). |
+| Type intersection | `["LocalBusiness", "Restaurant"]`, `["CreativeWork", "Product"]` | `@type` may be a list literal in the type definition. |
+| Type subtype inheritance | `Restaurant extends FoodEstablishment extends LocalBusiness extends Organization` (~30 inherited properties) | `extends` field on the type definition (§3.1). |
+| Auto‑wired graph cross‑references | `WebPage.mainEntity`, `WebPage.isPartOf`, `Article.publisher`, `Article.mainEntityOfPage` | Renderer policy (§3.4 step 4); declared in type definition's policy block, not per‑site mapping. |
+| Selector / template‑level constants | `Article.speakable → SpeakableSpecification` containing CSS selectors that target the rendered page's HTML | `literal` source with a list of selectors, configured at template level (no field source). |
+| Conditional emission | `Event.location` required for offline events, forbidden for `OnlineEventAttendanceMode`. `Product.aggregateRating` only when reviews exist. | Built‑in policy library covering well‑known cases; full conditional logic deferred (§16). Hook escape valve covers the long tail. |
+| Recursive / self‑referential nesting | `BreadcrumbList.itemListElement[i].item`, `HowToStep.itemListElement` for sub‑steps, `ImageObject.thumbnail → ImageObject` | Source specs are composable; `iterate.item_map` may contain further `iterate`. |
+| Identifiers on top‑level properties | `Product.gtin13`, `Product.sku`, `Book.isbn` | Plain `field` source on the property — no special handling needed. |
+| Currency codes | `priceCurrency: "USD"` (ISO 4217) | `Text` datatype with optional vocabulary‑validation hint; validity panel flags non‑ISO‑4217 values. |
+| Quantitative values with units | `weight: { @type: QuantitativeValue, value: 1.5, unitCode: "KGM" }` | Constant sub‑node template with source‑spec'd holes for `value` and `unitCode`. |
+| Speakable / accessibility metadata | `accessibilityFeature`, `accessibilityHazard` | Plain `field` (or `literal` list) — no architectural complication. |
+
+If you're adding a first‑class type (P1, P2, or promoting from P3), check it against this table. If the type uses a value shape that isn't here, that's a signal to revisit §3.1 *first*, not to special‑case it inside the type definition.
 
 ---
 
@@ -420,6 +490,8 @@ properties:
   name: field "title"
   startDate: field "starts"
   endDate: field "ends"
+  eventAttendanceMode: literal "https://schema.org/OfflineEventAttendanceMode"
+  eventStatus: literal "https://schema.org/EventScheduled"
   location:
     field_on: page (field "venue") field "address"
     @type: Place
@@ -429,7 +501,33 @@ properties:
     expand_inline: false           # emit @id only; the speaker pages emit their own Person nodes
 ```
 
-The Event node lists each speaker as `{ "@id": "https://site/speakers/jane#person" }`. Visiting the speaker page emits the corresponding Person node with the same `@id`, so search engines can connect the two.
+The Event node lists each speaker as `{ "@id": "https://site/speakers/jane#person" }`. Visiting the speaker page emits the corresponding Person node with the same `@id`, so search engines can connect the two. `eventAttendanceMode` and `eventStatus` are typed as `Enum<EventAttendanceMode>` and `Enum<EventStatus>` in the Event type definition, so the editor UI offers a dropdown rather than a free text box.
+
+### 14.4 Polymorphic `@type` and `oneOf` author on a unified `publication` template
+
+A single PW template `publication` carries blog posts, news items, and op‑eds. The editor picks the subtype via a select field `pub_subtype` whose options are `Article`, `NewsArticle`, `BlogPosting`, `OpinionNewsArticle`. The author can be either a staff member (PageRef to a `staff-member` page → `Person`) or an institutional byline (PageRef to an `organization` page → `Organization`).
+
+Per‑template mapping for `publication`:
+
+```
+type:
+  @type: field "pub_subtype"          # source-spec'd @type — picks the subtype per page
+  extends: Article                    # whatever subtype is picked, inherits Article's properties
+properties:
+  headline: field "title"
+  datePublished: field "published"
+  dateModified: field "modified"
+  image: field "hero_image"
+  author:
+    field: "byline"                   # PageRef single
+    type: oneOf<[Person, Organization]>
+    resolution_rule:
+      - when source_template in jsonld_person_templates: Person
+      - otherwise: Organization
+    expand_inline: false              # @id reference; the byline page emits its own node
+```
+
+For a page whose `pub_subtype = NewsArticle` and `byline → /staff/jane/`, the renderer emits a `NewsArticle` node with `author: { "@id": "https://site/staff/jane#person" }`. For a page whose `pub_subtype = OpinionNewsArticle` and `byline → /partners/some-think-tank/`, it emits an `OpinionNewsArticle` node with `author: { "@id": "https://site/partners/some-think-tank#organization" }`. Same template, same mapping; the polymorphism is declarative.
 
 ---
 
@@ -451,12 +549,20 @@ The current J1/J2 backlog entries map to phases 1–4 (delivering the in‑core 
 
 ## 16. Open questions / explicit non‑goals
 
+**Deferred (known gap, not pretending it's covered):**
+
+- **Full conditional emission logic.** Some Schema.org properties are required only when another property has a given value (`Event.location` required when `eventAttendanceMode != OnlineEventAttendanceMode`; `Offer.price` required when `priceSpecification` absent; `Product.aggregateRating` only when reviews exist). v1 ships a built‑in policy library covering the well‑known cases that Google flags in Search Console; sites with bespoke conditional rules use the `finalizeJsonLdGraph` hook. A full declarative condition language (e.g. *"required if `eventAttendanceMode in [Offline, Mixed]`"*) is deferred until there's evidence the hook escape valve isn't enough.
+- **Editor‑facing `Enum<Vocabulary>` UI for Custom‑type properties.** Built‑in types ship with declared enum vocabularies, so the editor gets dropdowns. For Custom‑type properties, the v1 editor surface is a free text box with vocabulary URLs validated by the validity panel; a generic dropdown UI keyed off a registered vocabulary list is a follow‑up.
+- **Cross‑page graph stitching.** The auto‑wire rules in §3.4 operate within a single page's graph. *Across* pages, cross‑references work via stable `@id`s pointing at canonical URLs; we don't currently introspect other pages' graphs at render time. If a downstream consumer needs e.g. an Article node embedded in a CollectionPage's `hasPart` array, that's expressed via per‑template mapping (`iterate` over the collection's PageReference) rather than automatic graph stitching.
+
 **Open:**
 
 - **Per‑template mapping storage format.** Either extend the existing `template_defaults_text` textarea grammar, or add a dedicated mapping field. Decision deferred to phase 5 implementation.
 - **Sitemap‑style "include this page in JSON‑LD?" toggle.** Probably not needed — the existing per‑page noindex + an empty graph already cover the "don't emit structured data" case. Confirm during phase 5.
 - **`@id` cross‑page persistence.** Currently the `@id` is derived from the canonical URL, which is stable. If sites change canonical strategy, existing `@id`s change. We may want a stable per‑node UUID stored on the page; deferred until there's evidence sites need it.
 - **Schema.org context version pinning.** Currently `https://schema.org`. Whether to expose the option to pin to a versioned context (`https://schema.org/version/15.0/`) — open.
+- **`oneOf` resolution rules — declarative vs hook.** v1 ships a small set of built‑in resolution rules (template‑name based: a Page using a template in `jsonld_person_templates` resolves Person, otherwise Organization). A more general declarative rule language is open; the hook escape valve covers it for now.
+- **Built‑in vocabulary registry size.** v1 ships the vocabularies needed by P1/P2 types (`ItemAvailability`, `EventStatus`, `EventAttendanceMode`, `DayOfWeek`, `OfferItemCondition`, `Gender`, `BookFormatType`, `MerchantReturnEnumeration`). Sites needing additional vocabularies register them via the same hook surface as types (`SeoNeo::registerSchemaVocabularies`).
 
 **Non‑goals:**
 
@@ -464,6 +570,7 @@ The current J1/J2 backlog entries map to phases 1–4 (delivering the in‑core 
 - A drag‑and‑drop schema designer in the admin. The mapping is structured but text‑based; the validity panel + preview is the editor‑facing surface.
 - Producing structured data in serialisations other than JSON‑LD (Microdata, RDFa). Out of scope.
 - Replacing or competing with content‑level structured data (e.g. inline `<itemscope>` markup written by editors in CKEditor body content). SeoNeo emits the page‑level `@graph`; editor‑authored markup is the editor's own responsibility.
+- A full declarative replacement for ProcessWire hooks. Hooks are the documented stable extension surface for everything that doesn't fit the source‑spec grammar.
 
 ---
 

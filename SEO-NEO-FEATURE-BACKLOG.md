@@ -450,6 +450,19 @@ Joss raised this back in 2014 and it's only become more important since. Indepen
 
 **Architecture (May 2026, expanded):** the full design rails for the JSON-LD subsystem live in **`SeoNeo/JSONLD-ARCHITECTURE.md`**. That document is the single source of truth for the resolver, cascade, source-spec grammar, multilingual rules, repeater / RepeaterMatrix / PageReference handling, `@id` strategy, validation/preview tooling, and the file-based + hook-based extension surface. The backlog entries below are the index — depth lives in the architecture doc.
 
+**Architecture stress-test (May 2026):** the doc has been walked end-to-end against the structurally-distinct value shapes that appear in real Schema.org JSON-LD across the major type families (creative works, organizations + LocalBusiness subtypes, places, events with `eventAttendanceMode` / `eventStatus` enums, products + offers, reviews, actions, jobs, real estate, education, FAQs / how-tos, site-structure, identifiers + `PropertyValue`, speakable, time-aware structures, controlled vocabularies, intersection types, polymorphic property values). The shape-coverage matrix lives in `SeoNeo/JSONLD-ARCHITECTURE.md` §4.4. The stress test surfaced (and the doc now resolves) the following type-definition contract gaps that would have been hidden until implementation:
+
+- `oneOf<[T1, T2, …]>` datatype for polymorphic property values (`Article.author = Person | Organization`, `Recipe.recipeInstructions = Text | List<HowToStep>`).
+- `@type` itself can be a source-spec'd property — needed for sites where one PW template emits multiple Schema.org subtypes based on a field value.
+- `Enum<Vocabulary>` datatype with declared vocabularies (`ItemAvailability`, `EventStatus`, `EventAttendanceMode`, `DayOfWeek`, `OfferItemCondition`, etc.) so editor UI gets dropdowns and validation flags invalid values.
+- Type-definition `extends` for subtype inheritance — `Restaurant extends FoodEstablishment extends LocalBusiness extends Organization` without duplicating ~30 properties per subtype.
+- Constant sub-node templates with source-spec'd holes for cases like `WebSite.potentialAction → SearchAction` (mostly fixed structure, only URL template configurable).
+- Auto-wired graph cross-references (`WebPage.mainEntity`, `WebPage.isPartOf`, `Article.publisher`, `Article.mainEntityOfPage`) declared in type-definition policy blocks rather than per-site mapping.
+- Node ordering in the graph (primary page-type node first, then BreadcrumbList, then WebPage, then WebSite, then Organization).
+- Recursive sanitisation policy for editor-supplied "Extra schema nodes" (scalars / lists / maps only at leaves; HTML-strip text; reject `@reverse` / `@graph` / `@context` keys).
+
+Conditional emission (`Event.location` required for offline events only, `Product.aggregateRating` only when reviews exist, etc.) is **explicitly deferred** to a built-in policy library covering the well-known cases plus the `finalizeJsonLdGraph` hook escape valve for the long tail; the doc captures this as a known gap rather than pretending it's covered.
+
 Headline architectural commitments (read the doc for the full design):
 
 - **One resolver, one cascade, one hook surface** across every schema type. Adding a type is a declaration, not a re-implementation. No per-type re-invention of value extraction, language handling, or source selection.
