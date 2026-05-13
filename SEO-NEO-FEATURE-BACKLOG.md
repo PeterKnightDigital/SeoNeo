@@ -448,36 +448,81 @@ Joss raised this back in 2014 and it's only become more important since. Indepen
 - Keeping it in core means one install, one config screen, one place to look.
 - The companion-module split was originally proposed in 2024 to keep core lean; a few well-chosen helpers don't justify a separate distribution.
 
-**API shape:** developers call generators from templates rather than relying on auto-detection (auto-detection without explicit mapping produces wrong structured data — every attempt has shown this). Each generator has a hookable resolver so per-site customisation stays clean.
+**Architecture (May 2026, expanded):** the full design rails for the JSON-LD subsystem live in **`SeoNeo/JSONLD-ARCHITECTURE.md`**. That document is the single source of truth for the resolver, cascade, source-spec grammar, multilingual rules, repeater / RepeaterMatrix / PageReference handling, `@id` strategy, validation/preview tooling, and the file-based + hook-based extension surface. The backlog entries below are the index — depth lives in the architecture doc.
+
+Headline architectural commitments (read the doc for the full design):
+
+- **One resolver, one cascade, one hook surface** across every schema type. Adding a type is a declaration, not a re-implementation. No per-type re-invention of value extraction, language handling, or source selection.
+- **Source-spec grammar** (a closed set of source kinds: `literal`, `field`, `field_path`, `field_on` (named/selectable page), `ancestor_field`, `iterate` (over Repeater / RepeaterMatrix / PageTable / PageReference multi), `hook`, `auto`). Source specs are composable so iterated sub-nodes use the same grammar recursively.
+- **Cascade order**: per-page override (incl. an "Extra schema nodes" structured field for ad-hoc nodes) → per-template mapping → module-wide defaults (the existing `jsonld_*` config) → built-in auto-detection floor.
+- **Multilingual is a property of the resolver, not of each type.** Multilang fields resolve in the active language at render time. The existing `jsonld_org_name_map` / `jsonld_org_description_map` config keys become a degenerate case of `literal + lang_map`, so they continue to work unchanged.
+- **Repeater / RepeaterMatrix / PageTable / PageReference as first-class inputs** via the `iterate` source kind. RepeaterMatrix items can be filtered by matrix item type so different matrix items map to different sub-schemas. PageReference targets can either expand inline as sub-nodes or be referenced by `@id`.
+- **Single `<script type="application/ld+json">` per page, single `@graph`, cross-referenced by `@id`.** Defined `@id` strategy per node (URL + fragment derived from `@type`). Same `Organization` `@id` across the whole site so search engines connect the dots.
+- **Person doesn't inherit business defaults** (telephone, email, address, sameAs, logo) from the module's Organization config. Enforced as a type-definition policy.
+- **Validation + preview tooling** in three places: a JSON-LD disclosure panel under the existing Effective Values panel in the admin SEO tab, a JSON-LD tab in SeoNeoBar (frontend, logged-in admins), and a programmatic `$page->seoneo->jsonLdReport()` API.
+- **Generic Custom type** with the same source-spec machinery for any Schema.org type the module doesn't ship first-class — so we never paint into the "you have to fork the module to add a type" corner.
+- **Two equivalent extension on-ramps**: file-based registration (drop a definition file into a conventional folder) and hook-based registration (`SeoNeo::registerSchemaTypes`). Sub-modules can ship type definitions as part of larger features.
+- **Full backward compatibility.** Existing module config keys (`jsonld_enabled`, `jsonld_pretty`, `jsonld_breadcrumbs`, `jsonld_default_author`, `jsonld_org_*`, `jsonld_*_templates`) keep their meaning — they map onto layers of the new cascade. Existing `___build…` and `___getJsonLd` / `___renderJsonLd` hook signatures stay stable. A site that upgrades and changes nothing produces the same JSON-LD output as before.
+
+**API shape:** developers call generators from templates rather than relying on auto-detection (auto-detection without explicit mapping produces wrong structured data — every attempt has shown this). Each generator has a hookable resolver so per-site customisation stays clean. The template helper one-liner stays available for the "do it in code" audience:
 
 ```php
-echo $page->seoneo->schema('Article');
-echo $page->seoneo->schema('BreadcrumbList');
-echo $page->seoneo->schema('FAQPage', ['questions' => $page->faq]);
+echo $page->seoneo->renderJsonLd();             // emits the auto-detected graph for the page
+echo $page->seoneo->schema('Article');          // single type, uses cascade + resolver
+echo $page->seoneo->schema('FAQPage', [
+    'mainEntity' => $page->faqs,                // overrides enter the cascade at top priority
+]);
+$report = $page->seoneo->jsonLdReport();        // structured validity report (per-node, per-property)
 ```
 
-**Built-in types (P1 set):**
-- `Article` — for blog posts and news content
-- `FAQPage` — for FAQ sections (a common request, simple structure)
-- `Person` — for author bios and team pages
-- `Organization` — for the site root / about pages
-- `BreadcrumbList` — auto-derived from the page tree
+**First-class types:**
 
-**Lessons to inherit from Maestro:**
-- `Alpine418` (Aug 2020, Maestro PR #25) discovered Maestro's `BreadcrumbList` walked all parent pages including the admin root and any PageRepeater wrapper pages, leaking internal IDs into Google's structured-data tester. SEO NEO's implementation must filter `template=admin`, `class=RepeaterPage`, and similar non-public ancestors before serialising.
+P1 (must ship before the JSON-LD subsystem is considered "done"):
+
+- Already present today (move onto the new resolver + cascade): `Organization`, `WebSite`, `WebPage`, `Article`, `Person`, `BreadcrumbList`.
+- New first-class additions in P1, motivated by being among the most commonly requested Schema.org types in real content sites:
+  - `FAQPage` — repeater of `{question, answer}` is the canonical input.
+  - `LocalBusiness` (typed extension of `Organization`, with address, geo, openingHours, telephone). Module config gains a "site is a LocalBusiness" toggle that swaps the auto-emitted Organization node for a LocalBusiness node and exposes the extra fields.
+  - `Product` — name, description, image, brand, offers (list of `Offer` from a repeater), aggregateRating (optional).
+  - `Event` — name, description, startDate, endDate, location (`Place`), organizer (PageRef → Organization), performer (PageRef multi → Person/Organization).
+- Article subtypes (`NewsArticle`, `BlogPosting`) supported via the `@type` array on the existing Article definition — no separate type definitions needed.
+
+P2 (first-class but not blocking the subsystem release; must require zero new resolver capabilities — if they do, the resolver is missing a feature and that gap is fixed first):
+
+- `VideoObject`
+- `HowTo` (steps via Repeater / RepeaterMatrix)
+- `Recipe`
+- `Review` / `AggregateRating` (embedded on `Product` initially; standalone P3)
+- `JobPosting`
+
+P3: anything else, addressed via the generic Custom type with no module changes required. Promotion to first-class happens when a P3 type proves popular enough to deserve a default mapping.
+
+**Lessons to inherit:**
+- `BreadcrumbList` implementations have historically walked all parent pages, including the admin root and any PageRepeater wrapper pages, leaking internal IDs into Google's structured-data tester. SEO NEO's implementation must filter `template=admin`, `class=RepeaterPage`, and similar non-public ancestors before serialising. (The current builder already does this; calling it out so the requirement survives the resolver refactor.)
 
 #### J2. Type-specific helpers and per-type extension 🔴 Gap (P1 — in-core)
-Same module as J1. Each type's resolver is independently hookable:
+Same subsystem as J1. Per-type and per-property hooks are the stable extension surface, documented in `SeoNeo/JSONLD-ARCHITECTURE.md` §11:
 
 ```php
-$wire->addHookAfter('SeoNeo::schemaArticle', function(HookEvent $e) {
+$wire->addHookAfter('SeoNeo::buildJsonLdArticle', function(HookEvent $e) {
     $data = $e->return;
     $data['articleSection'] = $e->arguments(0)->parent->title;
     $e->return = $data;
 });
+
+// Per-property resolution (e.g. force a specific source for one site):
+$wire->addHookAfter('SeoNeo::resolveJsonLdValue', function(HookEvent $e) { … });
+
+// Whole-graph last-chance mutate:
+$wire->addHookAfter('SeoNeo::finalizeJsonLdGraph', function(HookEvent $e) { … });
+
+// Register an additional first-class type from a sub-module:
+$wire->addHookAfter('SeoNeo::registerSchemaTypes', function(HookEvent $e) {
+    $e->return['Course'] = [ '@type' => 'Course', 'properties' => [ … ], 'default_mapping' => [ … ] ];
+});
 ```
 
-Sites that need exotic types not in the built-in list (e.g. `LocalBusiness`, `Recipe`, `Event`, `Product`) extend by hooking `SeoNeo::schema` directly — the resolver chain falls through to user code when no built-in handler matches the requested type.
+Sites that need types not in the P1/P2 first-class set (Schema.org's long tail) reach them through the **generic Custom type** with the same source-spec grammar — no need to hook anything. The Custom path is the architecture's escape valve, and is what stops the type list from becoming a never-ending feature backlog.
 
 ---
 
@@ -809,7 +854,7 @@ The only remaining in-scope item from the original backlog is **L8** (editor-fri
 
 After a user-feedback round (May 2026) the priority of two previously-deferred items changed, and two new sections were added to the backlog:
 
-25. **J1 / J2** — Schema.org structured data with hookable type generators. **Promoted from P3 / companion-module to P1 / in-core.** Justification in section J above.
+25. **J1 / J2** — Schema.org structured data with hookable type generators. **Promoted from P3 / companion-module to P1 / in-core.** Justification in section J above; full design rails in `SeoNeo/JSONLD-ARCHITECTURE.md`. P1 first-class type set expanded (May 2026) to add `FAQPage`, `LocalBusiness`, `Product`, and `Event` alongside the existing `Organization` / `WebSite` / `WebPage` / `Article` / `Person` / `BreadcrumbList`. P2 follow-ups (`VideoObject`, `HowTo`, `Recipe`, `Review` / `AggregateRating`, `JobPosting`) and a generic `Custom` type for the long tail.
 26. **P1** — SEO health audit as a Lister-based admin view. New section P. The architectural strength noted in A8 (selector-engine support) makes this uniquely cheap to build in SEO NEO compared to any other PW SEO module.
 
 These two are the remaining 1.0-blockers under the revised plan.
