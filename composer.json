@@ -1,0 +1,21 @@
+{
+  "name": "peterknight-digital/seoneo",
+  "description": "Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.",
+  "type": "pw-module",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Peter Knight Digital",
+      "homepage": "https://peterknight.digital"
+    }
+  ],
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "files": [
+      "SeoNeo.module.php",
+      "InputfieldSeoNeoPreview.module.php"
+    ]
+  }
+}

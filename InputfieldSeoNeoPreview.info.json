@@ -1,0 +1,12 @@
+{
+  "name": "InputfieldSeoNeoPreview",
+  "title": "SeoNeo SERP Preview",
+  "version": "1.0.0",
+  "summary": "Display-only SERP preview widget for the SeoNeo SEO tab.",
+  "icon": "eye",
+  "requires": [
+    "ProcessWire>=3.0.200",
+    "PHP>=8.1.0",
+    "SeoNeo"
+  ]
+}

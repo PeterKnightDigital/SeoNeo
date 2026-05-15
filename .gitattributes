@@ -1,0 +1,7 @@
+# Files that should never appear inside a `git archive` or a
+# GitHub "Download ZIP" of this repo. These are dev-only and
+# would just bloat / confuse the packaged module.
+
+tests/              export-ignore
+.gitattributes      export-ignore
+.gitignore          export-ignore
