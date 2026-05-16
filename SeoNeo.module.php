@@ -55,7 +55,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	const FIELD_LABELS = [
 		'seoneo_tab'         => 'SEO',
-		'seoneo_preview'     => 'SERP Preview',
+		'seoneo_preview'     => 'Google SERP Preview',
 		'seoneo_title'       => 'Meta Title',
 		'seoneo_description' => 'Meta Description',
 		'seoneo_canonical'   => 'Canonical URL',
@@ -69,6 +69,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	];
 
 	const FIELD_DESCRIPTIONS = [
+		'seoneo_preview'     => 'Live preview of how this page will appear in Google search results. Updates as you type — switch between desktop and mobile to check both layouts.',
 		'seoneo_title'       => 'Override the page title used in search results. Leave empty to use smart-map fallbacks.',
 		'seoneo_description' => 'A short summary for search engine results. Leave empty to use smart-map fallbacks.',
 		'seoneo_canonical'   => 'Leave empty to use the page URL automatically. Accepts an absolute URL (https://example.com/path/) or a root-relative path (/path/) — relative paths are expanded against the current site\'s scheme and host.',
@@ -92,7 +93,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.0.0-beta.1',
+			'version'  => '1.0.0',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -235,6 +236,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	public function ___install() {
 		$created = $this->createMissingFields();
+		$this->ensurePreviewFieldInputfield();
 		$this->message(sprintf(
 			$this->_('SeoNeo: %d field(s) created. Add seoneo_tab to your templates to enable SEO editing.'),
 			$created
@@ -244,8 +246,10 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	/**
 	 * Called automatically by PW when the installed version differs from the
 	 * version in getModuleInfo(). Creates any DEFAULT_FIELDS entries that are
-	 * missing (typically because they were added in a later release), without
-	 * touching existing data.
+	 * missing (typically because they were added in a later release), and
+	 * re-asserts the SERP-preview Inputfield wiring on any pre-existing
+	 * `seoneo_preview` field — defensive against installs that pre-date the
+	 * companion Inputfield being broken out into its own module.
 	 */
 	public function ___upgrade($fromVersion, $toVersion) {
 		$created = $this->createMissingFields();
@@ -255,6 +259,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 				$created,
 				$toVersion
 			));
+		}
+
+		if($this->ensurePreviewInputfieldInstalled() > 0) {
+			$this->message($this->_('SeoNeo: companion module InputfieldSeoNeoPreview installed.'));
+		}
+
+		if($this->ensurePreviewFieldInputfield() > 0) {
+			$this->message($this->_('SeoNeo: SERP Preview field repaired (Inputfield class re-applied).'));
 		}
 	}
 
@@ -322,6 +334,61 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		}
 
 		return $created;
+	}
+
+	/**
+	 * Defensive repair: re-asserts that the existing `seoneo_preview` field
+	 * is wired to render via `InputfieldSeoNeoPreview` (the Google-style SERP
+	 * card) rather than the default `InputfieldText` fallback.
+	 *
+	 * This guards against installs where `seoneo_preview` was created before
+	 * the companion Inputfield existed, or where a `Modules → Refresh` left
+	 * the field's `inputfieldClass` empty. Idempotent: returns 1 if a repair
+	 * actually happened, 0 otherwise.
+	 */
+	protected function ensurePreviewFieldInputfield(): int {
+		$fields = $this->wire('fields');
+		$field = $fields->get('seoneo_preview');
+		if(!$field) return 0;
+
+		$needsRepair = false;
+		if((string) $field->inputfieldClass !== 'InputfieldSeoNeoPreview') {
+			$field->inputfieldClass = 'InputfieldSeoNeoPreview';
+			$needsRepair = true;
+		}
+		if((int) $field->collapsed !== Inputfield::collapsedNever) {
+			$field->collapsed = Inputfield::collapsedNever;
+			$needsRepair = true;
+		}
+		$expectedLabel = self::FIELD_LABELS['seoneo_preview'];
+		if((string) $field->label !== $expectedLabel) {
+			$field->label = $expectedLabel;
+			$needsRepair = true;
+		}
+		$expectedDesc = self::FIELD_DESCRIPTIONS['seoneo_preview'];
+		if((string) $field->description !== $expectedDesc) {
+			$field->description = $expectedDesc;
+			$needsRepair = true;
+		}
+
+		if($needsRepair) {
+			$field->save();
+			return 1;
+		}
+		return 0;
+	}
+
+	/**
+	 * Belt-and-braces: PW auto-installs the companion Inputfield on a fresh
+	 * install of SeoNeo, but not on upgrade. If for any reason it isn't
+	 * registered when we run an upgrade, install it now so the SERP card
+	 * has somewhere to render from. Returns 1 if we installed it just now.
+	 */
+	protected function ensurePreviewInputfieldInstalled(): int {
+		$modules = $this->wire('modules');
+		if($modules->isInstalled('InputfieldSeoNeoPreview')) return 0;
+		$modules->install('InputfieldSeoNeoPreview');
+		return 1;
 	}
 
 	public function ___uninstall() {

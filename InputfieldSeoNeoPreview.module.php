@@ -13,7 +13,7 @@ class InputfieldSeoNeoPreview extends InputfieldMarkup {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo SERP Preview',
-			'version'  => '1.0.0',
+			'version'  => '1.0.1',
 			'summary'  => 'Display-only SERP preview widget for the SeoNeo SEO tab.',
 			'icon'     => 'eye',
 			'requires' => ['ProcessWire>=3.0.200', 'PHP>=8.1.0', 'SeoNeo'],

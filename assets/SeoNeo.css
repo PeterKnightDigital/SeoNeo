@@ -3,7 +3,81 @@
  *
  * All selectors prefixed with "seoneo-" to avoid leaking into
  * the ProcessWire admin.
+ *
+ * Token architecture (three layers):
+ *   Layer 1 — Primary palette   raw brand / accent values
+ *   Layer 2 — Secondary palette raw neutral scale + status colours
+ *   Layer 3 — Semantic tokens   named references to layers 1–2 plus
+ *                                non-colour primitives (radius, shadow,
+ *                                transition). Component styles consume
+ *                                only this layer.
  */
+
+:root {
+
+	/* ── Layer 1: Primary palette ──────────────────────────────── */
+
+	--sn-primary: var(--pw-main-color, #eb1d61); /* inherits PW admin theme colour; fallback matches PW default */
+
+	/* Google SERP display colours. Intentionally match Google's own
+	 * palette so the preview card looks authentic. Do not repurpose
+	 * these as generic UI colours. */
+	--sn-serp-blue:       #1a0dab;
+	--sn-serp-site:       rgb(31, 31, 31);
+	--sn-serp-breadcrumb: rgb(71, 81, 86);
+	--sn-serp-desc:       #4d5156;
+
+	/* ── Layer 2: Secondary palette ────────────────────────────── */
+
+	/* Neutral scale — lightest → darkest */
+	--sn-white:    #ffffff;
+	--sn-grey-50:  #f3f4f6;
+	--sn-grey-200: #e5e7eb;
+	--sn-grey-250: #e4e4e7; /* favicon circle bg — slightly warmer than grey-200 */
+	--sn-grey-400: #6b7280;
+	--sn-grey-500: #555555;
+	--sn-grey-800: #1f2937;
+
+	/* Status */
+	--sn-green: #047857;
+	--sn-amber: #b45309;
+	--sn-red:   #b91c1c;
+
+	/* ── Layer 3: Semantic tokens ───────────────────────────────── */
+
+	/* — Colour roles — */
+	--sn-accent:           var(--sn-primary);
+	--sn-surface:          var(--sn-white);
+	--sn-ctrl-bg:          var(--sn-grey-50);
+	--sn-border-color:     var(--sn-grey-200);
+	--sn-favicon-bg:       var(--sn-grey-250);
+	--sn-text:             var(--sn-grey-500);
+	--sn-text-muted:       var(--sn-grey-400);
+	--sn-text-hover:       var(--sn-grey-800);
+	--sn-title-color:      var(--sn-serp-blue);
+	--sn-site-name-color:  var(--sn-serp-site);
+	--sn-breadcrumb-color: var(--sn-serp-breadcrumb);
+	--sn-desc-color:       var(--sn-serp-desc);
+	--sn-ok:               var(--sn-green);
+	--sn-warn:             var(--sn-amber);
+	--sn-over:             var(--sn-red);
+
+	/* — Border — */
+	--sn-border:      1px solid var(--sn-border-color);
+	--sn-radius-sm:   4px;
+	--sn-radius-md:   6px;
+	--sn-radius-lg:   8px;
+	--sn-radius-xl:   10px;
+	--sn-radius-full: 50%;
+
+	/* — Shadow — */
+	--sn-shadow-sm:   0 1px 2px rgba(0, 0, 0, .06);
+	--sn-shadow-card: 0 1px 3px rgba(0, 0, 0, .04);
+
+	/* — Transition — */
+	--sn-ease-fast: .15s ease;
+	--sn-ease-med:  .25s ease;
+}
 
 /* ── SERP preview ─────────────────────────────────────────────────── */
 
@@ -25,9 +99,9 @@
 
 .seoneo-serp-surface-toggle {
 	display: inline-flex;
-	background: #f3f4f6;
-	border: 1px solid #e5e7eb;
-	border-radius: 6px;
+	background: var(--sn-ctrl-bg);
+	border: var(--sn-border);
+	border-radius: var(--sn-radius-md);
 	padding: 2px;
 	gap: 0;
 }
@@ -38,23 +112,23 @@
 	gap: 5px;
 	border: 0;
 	background: transparent;
-	color: #555;
-	padding: 4px 10px;
-	border-radius: 4px;
+	color: var(--sn-text);
+	padding: 6px 10px;
+	border-radius: var(--sn-radius-sm);
 	font-size: 12px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: background-color .15s ease, color .15s ease;
+	transition: background-color var(--sn-ease-fast), color var(--sn-ease-fast);
 }
 
 .seoneo-serp-surface-btn:hover {
-	color: #1a0dab;
+	color: var(--sn-accent);
 }
 
 .seoneo-serp-surface-btn[aria-selected="true"] {
-	background: #fff;
-	color: #1a0dab;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+	background: var(--sn-surface);
+	color: var(--sn-accent);
+	box-shadow: var(--sn-shadow-sm);
 }
 
 .seoneo-serp-surface-btn svg {
@@ -62,15 +136,15 @@
 }
 
 /* Language switcher — segmented button group, visual sibling of the
- * surface toggle. One button per active language; active state mirrors
- * Google's SERP title blue so it stands out from the surface toggle's
+ * surface toggle. One button per active language; active state uses
+ * the module accent colour so it stands out from the surface toggle's
  * white-on-grey active state. */
 .seoneo-serp-lang-toggle {
 	display: inline-flex;
-	border: 1px solid #e5e7eb;
-	border-radius: 6px;
+	border: var(--sn-border);
+	border-radius: var(--sn-radius-md);
 	overflow: hidden;
-	background: #f3f4f6;
+	background: var(--sn-ctrl-bg);
 }
 
 .seoneo-serp-lang-btn {
@@ -78,16 +152,16 @@
 	align-items: center;
 	justify-content: center;
 	min-width: 36px;
-	padding: 4px 10px;
+	padding: 6px 10px;
 	border: 0;
-	border-left: 1px solid #e5e7eb;
+	border-left: var(--sn-border);
 	background: transparent;
-	color: #6b7280;
+	color: var(--sn-text-muted);
 	font-size: 11px;
 	font-weight: 600;
 	letter-spacing: 0.04em;
 	cursor: pointer;
-	transition: background-color .15s ease, color .15s ease;
+	transition: background-color var(--sn-ease-fast), color var(--sn-ease-fast);
 }
 
 .seoneo-serp-lang-btn:first-child {
@@ -95,30 +169,31 @@
 }
 
 .seoneo-serp-lang-btn:hover {
-	color: #1f2937;
-	background: #ffffff;
+	color: var(--sn-text-hover);
+	background: var(--sn-surface);
 }
 
 .seoneo-serp-lang-btn[aria-selected="true"] {
-	background: #1a0dab;
-	color: #fff;
+	background: var(--sn-surface);
+	color: var(--sn-accent);
+	box-shadow: var(--sn-shadow-sm);
 }
 
 .seoneo-serp-lang-btn[aria-selected="true"]:hover {
-	background: #1a0dab;
-	color: #fff;
+	background: var(--sn-surface);
+	color: var(--sn-accent);
 }
 
 .seoneo-serp-preview {
 	font-family: arial, sans-serif;
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 8px;
+	background: var(--sn-surface);
+	border: var(--sn-border);
+	border-radius: var(--sn-radius-lg);
 	padding: 14px 16px;
 	max-width: 600px;
 	box-sizing: border-box;
 	overflow-wrap: anywhere;
-	transition: max-width .25s ease, padding .25s ease;
+	transition: max-width var(--sn-ease-med), padding var(--sn-ease-med);
 }
 
 /* Mobile surface — narrower card mimicking Google's mobile SERP card
@@ -127,8 +202,8 @@
 .seoneo-serp-wrap[data-surface="mobile"] .seoneo-serp-preview {
 	max-width: 380px;
 	padding: 12px 14px;
-	border-radius: 10px;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+	border-radius: var(--sn-radius-xl);
+	box-shadow: var(--sn-shadow-card);
 }
 
 .seoneo-serp-wrap[data-surface="mobile"] .seoneo-serp-preview .seoneo-serp-favicon {
@@ -171,8 +246,8 @@
 .seoneo-serp-preview .seoneo-serp-favicon {
 	width: 28px;
 	height: 28px;
-	border-radius: 50%;
-	background: #e4e4e7;
+	border-radius: var(--sn-radius-full);
+	background: var(--sn-favicon-bg);
 	flex-shrink: 0;
 	overflow: hidden;
 	display: flex;
@@ -198,7 +273,7 @@
 	font-family: arial, sans-serif;
 	font-size: 14px;
 	font-weight: 400;
-	color: rgb(31, 31, 31);
+	color: var(--sn-site-name-color);
 	line-height: 1.3;
 	white-space: nowrap;
 	overflow: hidden;
@@ -209,7 +284,7 @@
 	font-family: arial, sans-serif;
 	font-size: 12px;
 	font-weight: 400;
-	color: rgb(71, 81, 86);
+	color: var(--sn-breadcrumb-color);
 	line-height: 1.3;
 	white-space: nowrap;
 	overflow: hidden;
@@ -218,7 +293,7 @@
 
 .seoneo-serp-preview .seoneo-serp-title {
 	font-family: 'Google Sans', 'Segoe UI', system-ui, sans-serif;
-	color: #1a0dab;
+	color: var(--sn-title-color);
 	font-size: 20px;
 	line-height: 1.3;
 	margin: 4px 0 3px;
@@ -227,7 +302,7 @@
 }
 
 .seoneo-serp-preview .seoneo-serp-description {
-	color: #4d5156;
+	color: var(--sn-desc-color);
 	font-size: 14px;
 	line-height: 1.4;
 	overflow-wrap: break-word;
@@ -239,7 +314,7 @@
 @media (max-width: 600px) {
 	.seoneo-serp-preview {
 		padding: 12px 12px;
-		border-radius: 6px;
+		border-radius: var(--sn-radius-md);
 	}
 	.seoneo-serp-preview .seoneo-serp-title {
 		font-size: 17px;
@@ -268,11 +343,11 @@
 .seoneo-counter {
 	font-size: 0.8em;
 	margin-top: 3px;
-	color: #6b7280;
-	transition: color 0.15s;
+	color: var(--sn-text-muted);
+	transition: color var(--sn-ease-fast);
 	text-align: right;
 }
 
-.seoneo-counter[data-state="green"] { color: #047857; }
-.seoneo-counter[data-state="amber"] { color: #b45309; }
-.seoneo-counter[data-state="red"]   { color: #b91c1c; font-weight: 600; }
+.seoneo-counter[data-state="green"] { color: var(--sn-ok); }
+.seoneo-counter[data-state="amber"] { color: var(--sn-warn); }
+.seoneo-counter[data-state="red"]   { color: var(--sn-over); font-weight: 600; }

@@ -133,7 +133,7 @@ Go to Modules > Configure > SeoNeo:
 
 ## Admin UI features
 
-- **SERP Preview**: live Google-style preview that updates as you type, showing the formatted title with separator and site name. **Desktop / Mobile surface toggle** above the card flips between Google's desktop and mobile SERP layouts (narrower card, host-only breadcrumb, mobile-budget truncation); **language switcher** (multilingual sites only) lets editors flick between language versions of the SERP without changing PW tabs
+- **Google SERP Preview**: live Google-style preview that updates as you type, showing the formatted title with separator and site name. **Desktop / Mobile surface toggle** above the card flips between Google's desktop and mobile SERP layouts (narrower card, host-only breadcrumb, mobile-budget truncation); **language switcher** (multilingual sites only) lets editors flick between language versions of the SERP without leaving the page
 - **Surface-aware character counters**: advisory counters on title and description with green/amber/red zones. Budgets switch automatically with the SERP preview surface — desktop defaults to 60/160 chars, mobile to 50/120 (Google's mobile SERP truncates earlier). All four desktop and four mobile thresholds are tunable in module config. An optional **hard-cap** module setting can additionally enforce browser-level `maxlength` for editorial teams that want a firm limit
 - **Canonical URL placeholder**: shows the automatic page URL in the input placeholder
 - **Noindex/nofollow checkboxes**: per-page control over search engine indexing
@@ -600,9 +600,22 @@ The Site-wide AI crawler management features that some users associate with Seo 
 
 ## Changelog
 
+### 1.0.0 — Initial public release
+
+First stable release of SEO NEO.
+
+**What's new since beta.1**
+
+- **Google SERP Preview** field label and description updated; the section now shows a descriptive helper line beneath the heading
+- **Defensive self-heal on upgrade** — `___upgrade()` now re-asserts `seoneo_preview->inputfieldClass = InputfieldSeoNeoPreview` and ensures the companion Inputfield module is installed, guarding against stale-symlink or pre-release-snapshot installs that left the field wired to the plain text fallback
+- **CSS design tokens** — `SeoNeo.css` now uses a three-layer token system (`--sn-*` namespace: primary palette → secondary palette → semantic tokens) so a single `:root` change propagates across all controls
+- **Accent colour inherits ProcessWire theme** — the selected/active state on the Desktop/Mobile and language buttons now reads `--pw-main-color` automatically, matching whatever admin theme colour is set
+- **Consistent button-group active state** — both the surface toggle and language switcher now use the same treatment: white pill, accent-coloured text, subtle shadow (no more solid filled background on the language buttons)
+- **Slightly taller buttons** — vertical padding on both control groups increased from 4 px to 6 px
+
 ### 1.0.0-beta.1 — Initial public beta
 
-First public release of SEO NEO — a modern, native-PW-fields-first SEO coordinator. Shipping as `1.0.0-beta.1` for early-tester feedback; the `1.0.0` tag follows once the beta round is complete.
+First public release of SEO NEO — a modern, native-PW-fields-first SEO coordinator.
 
 **Core output**
 
