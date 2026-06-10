@@ -510,20 +510,11 @@ If you want absolute control over where the SEO block lands relative to ProCache
 
 Manual rendering also makes it explicit which template files emit the SEO block, which can help when debugging cache-related issues.
 
-## Migration script
+## Rolling out to templates
 
-A migration script is included at `migrate-seoneo.php` for rolling out the SEO tab to multiple templates at once. It:
+From **1.1.0**, add `seoneo_tab` to any template and save — SeoNeo inserts the remaining SEO fields in the correct order automatically. Repeat per template; no bulk script required.
 
-- Adds the SEO tab and all fields to specified templates
-- Copies `summary` field values to `seoneo_description`
-- Sets noindex/nofollow on gated or private pages
-- Supports dry-run mode (default) for safe preview
-
-Run via Tracy Console:
-
-```php
-include $config->paths->siteModules . 'SeoNeo/migrate-seoneo.php';
-```
+For one-off data tasks (copying a legacy `summary` field into `seoneo_description`, bulk noindex on login pages, etc.), use Tracy Console with your own site-specific script or the ProcessWire API directly.
 
 ## Requirements
 
@@ -577,7 +568,7 @@ The Site-wide AI crawler management features that some users associate with Seo 
 ### Migration steps
 
 1. Install SEO NEO via Modules → Refresh → Install (this creates the `seoneo_*` fields)
-2. Run the included migration script via Tracy Console: `include $config->paths->siteModules . 'SeoNeo/migrate-seoneo.php';` — copies `summary` → `seoneo_description` and tags gated/private pages with noindex (dry-run by default; flip the flag to apply)
+2. Add `seoneo_tab` to each template that needs an SEO tab and save — SeoNeo auto-inserts the remaining fields (1.1.0+). Copy any legacy field values (`summary` → `seoneo_description`, etc.) via Tracy Console or your own one-off script if needed
 3. **Rewrite template API calls.** Both legacy modules expose `$page->seo` as the template hook; SEO NEO uses `$page->seoneo`. The shape of the calls is preserved across the move, so most projects are a one-liner find/replace:
 
 	**From SeoMaestro:**
@@ -669,7 +660,6 @@ First public release of SEO NEO — a modern, native-PW-fields-first SEO coordin
 
 - Hookable resolver methods on every value: `getTitle`, `getDescription`, `getCanonical`, `getRobots`, `getOgImage`, `getJsonLd`, `getHreflangAlternates`, …
 - Hookable render methods on every section: `renderTitle`, `renderDescription`, `renderOg`, `renderTwitter`, `renderHreflang`, `renderJsonLd`, …
-- Migration helper (`migrate-seoneo.php`) to bootstrap field setup
 
 ## License
 
