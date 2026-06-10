@@ -272,7 +272,7 @@ render method (`SeoNeo::renderOg`) apply to both `$page->seoneo->og->render()`
 and `$page->seoneo->renderOg()`. Use whichever style reads best in your
 template — most projects standardise on one.
 
-> ⚠️ **Schema / JSON-LD is BETA, deferred to a future phase.** The auto `@graph` generator (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) is in the codebase and `$page->seoneo->schema->render()` / `renderSchema()` will return it, but the API shape, default `@graph` composition, and hook surface are not yet committed for 1.0 and may change. For production sites that need structured data right now, hand-rolling JSON-LD via the standard hooks (`addHookAfter('SeoNeo::renderHead', …)`) is the recommended path until the helper API stabilises.
+> ⚠️ **Schema / JSON-LD is BETA.** The auto `@graph` generator (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) ships in core and `$page->seoneo->schema->render()` / `renderSchema()` will return it, but the API shape, default `@graph` composition, and hook surface may still change. For production sites that need stable structured data today, hand-rolling JSON-LD via the standard hooks (`addHookAfter('SeoNeo::renderHead', …)`) remains the safer path until the helper API stabilises.
 
 ### Composing your own `<head>` with partial methods
 
@@ -583,7 +583,7 @@ Both legacy modules have been gradually unmaintained, and both ship a handful of
 | Search-engine verification (Google/Bing/Yandex/Pinterest/Facebook/Baidu) | ✓ | partial | ✓ | Accepts bare token or full `<meta>` snippet |
 | `<meta name="author">` | partial | ✓ | ✓ | Site-wide default + optional per-page `seoneo_author` field |
 | Multilingual (per-language fields) | ✓ | ✓ | ✓ | NEO uses native PW language-aware fields, not bespoke storage |
-| JSON-LD structured data emitter | ✗ | partial | ✓ | NEO emits a full `@graph` (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) with multilingual Organization name + description |
+| JSON-LD structured data emitter | ✗ | partial | ~ **BETA** | Auto `@graph` (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) ships in core; API shape and defaults may still change — use hooks for production-critical schema |
 | Per-template SEO defaults with placeholders | ✗ | partial | ✓ | NEO: `{title}`, `{page.field}`, `{pageNum}`, pipe-separated fallbacks |
 | Smart-map fallbacks with ancestor walk | ✗ | ✗ | ✓ | Prefix any field with `*` to walk parents |
 | ProCache compatibility | partial | partial | ✓ | Documented and tested in both cache-miss and cache-hit paths |
@@ -602,7 +602,7 @@ These features ship with one or both of the legacy modules but are deliberately 
 | **Custom `robots.txt` editor** | [`MarkupRobotsTxt`](https://modules.processwire.com/modules/markup-robots-txt/) or a simple `site/templates/robots.php` override |
 | **Google Analytics / GTM snippet injection** | [`MarkupGoogleTagManager`](https://modules.processwire.com/modules/markup-google-tag-manager/) or [`SimpleAnalytics`](https://modules.processwire.com/modules/simple-analytics/) — analytics is its own discipline, not really an SEO concern |
 
-The Site-wide AI crawler management features that some users associate with Seo Maestro are part of the **SEO NEO PRO** companion bundle (URL Lifecycle Manager, AI Crawler Observability) — see `ROADMAP.md` for the planned PRO scope.
+Site-wide AI crawler management features that some users associate with Seo Maestro are planned for a separate **SEO NEO PRO** companion bundle (URL Lifecycle Manager, AI Crawler Observability). PRO scope is not published in this repository yet.
 
 ### Migration steps
 
