@@ -631,6 +631,12 @@ The Site-wide AI crawler management features that some users associate with Seo 
 
 ## Changelog
 
+### 1.1.3 — Fix NEO badge on Wire tab
+
+- Badge injection now targets the tab link (`a#_Inputfield_seoneo_tab`) — ProcessWire puts the ID on the anchor, not the `<li>`, so the badge never appeared
+- Re-runs after WireTabs initialises (`jQuery` ready + `wiretabclick`)
+- Badge pill uses flexbox so **NEO** is centred horizontally
+
 ### 1.1.2 — Fix empty SeoNeo tab
 
 - **Upgrade self-heal** inserts any missing SeoNeo fields into fieldgroups that already have `seoneo_tab` but only got the tab opener

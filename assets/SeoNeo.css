@@ -355,18 +355,23 @@
 /* ── Page editor Wire tab badge (SeoNeo tab only) ─────────────────── */
 
 ul.WireTabs a[data-seoneo-tab="1"] .seoneo-tab-badge {
-	display: inline-block;
-	margin-left: 0.35em;
-	padding: 0.1em 0.35em 0.05em;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 0.1em;
+	padding: 0.5em 0.45em;
+	min-width: 2.6em;
+	box-sizing: border-box;
 	font-size: 0.58em;
 	font-weight: 700;
 	letter-spacing: 0.06em;
 	vertical-align: middle;
-	line-height: 1.1;
+	line-height: 1;
 	border-radius: 3px;
 	background: var(--sn-accent, var(--pw-main-color, #eb1d61));
 	color: var(--sn-white, #fff);
 	text-transform: uppercase;
+	text-align: center;
 	position: relative;
 	top: -0.05em;
 }

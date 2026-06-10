@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.2',
+			'version'  => '1.1.3',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -737,7 +737,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'counterDescMobileAmber'  => (int) $this->counter_desc_mobile_amber,
 			'multilang'       => $multilang,
 			'defaultLanguageId' => $defaultLanguageId,
-			'showTabBadge'    => $this->getEditorTabShowBadge(),
+			'showTabBadge'    => $this->getEditorTabShowBadge() ? 1 : 0,
 		];
 		$config->js('SeoNeo', $jsConfig);
 	}
@@ -2538,7 +2538,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->name = 'editor_tab_show_badge';
 		$f->label = $this->_('Show NEO badge on tab');
 		$f->label2 = $this->_('Enabled');
-		$f->description = $this->_('When enabled, a small "NEO" badge appears beside the tab label in the page editor. Recommended when MarkupSEO\'s "SEO" tab is also on the template — the field name (seoneo_tab) already differs; the badge makes the tab visually distinct.');
+		$f->description = $this->_('When enabled, a small "NEO" badge appears beside the tab label in the page editor, making the SeoNeo tab easy to spot when you have more than one SEO-related tab.');
 		if((int) $this->get('editor_tab_show_badge') > 0) $f->attr('checked', 'checked');
 		$f->columnWidth = 50;
 		$fieldset->add($f);

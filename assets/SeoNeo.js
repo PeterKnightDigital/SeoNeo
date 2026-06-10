@@ -337,11 +337,16 @@
 
 	// ── Wire tab badge (page editor) ──────────────────────────────────
 
+	function findSeoNeoTabLink() {
+		// WireTabs puts id="_Inputfield_seoneo_tab" on the <a>, not the <li>.
+		return d.querySelector(
+			'ul.WireTabs a[id*="_seoneo_tab"], ul.WireTabs a[href*="seoneo_tab"]'
+		);
+	}
+
 	function injectTabBadge() {
 		if (!cfg.showTabBadge) return;
-		var tabLi = d.querySelector('ul.WireTabs li[id*="_seoneo_tab"]');
-		if (!tabLi) return;
-		var tabLink = tabLi.querySelector('a');
+		var tabLink = findSeoNeoTabLink();
 		if (!tabLink) return;
 		tabLink.setAttribute('data-seoneo-tab', '1');
 		if (tabLink.querySelector('.seoneo-tab-badge')) return;
@@ -351,13 +356,23 @@
 		tabLink.appendChild(badge);
 	}
 
+	function wireTabBadge() {
+		injectTabBadge();
+		if (!w.jQuery) return;
+		var $ = w.jQuery;
+		$(function() {
+			injectTabBadge();
+			$(document).on('wiretabclick', injectTabBadge);
+		});
+	}
+
 	// ── Init ──────────────────────────────────────────────────────────
 
 	SeoNeo.init = function() {
 		injectCounters();
 		setCanonicalPlaceholder();
 		wirePreviewControls();
-		injectTabBadge();
+		wireTabBadge();
 		refreshSerp();
 	};
 
