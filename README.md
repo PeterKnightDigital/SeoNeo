@@ -631,6 +631,13 @@ The Site-wide AI crawler management features that some users associate with Seo 
 
 ## Changelog
 
+### 1.1.2 — Fix empty SeoNeo tab
+
+- **Upgrade self-heal** inserts any missing SeoNeo fields into fieldgroups that already have `seoneo_tab` but only got the tab opener
+- Repairs `seoneo_tab` if **Presentation → Tab** (`collapsedTab`) was set — that mode wraps only the opener and leaves child fields outside the Wire tab (empty tab UI). `FieldtypeFieldsetTabOpen` + `seoneo_tab_END` is the correct pattern (same as MarkupSEO's `seo_tab`)
+- **Module config fixes:** NEO badge checkbox uses the standard ProcessWire checkbox pattern (was snapping unchecked on click); tab label syncs to the `seoneo_tab` field from the saved config immediately on save
+- Auto-complete also runs when `seoneo_tab` is added via the template editor (`ProcessTemplate::fieldAdded`)
+
 ### 1.1.1 — Distinct SeoNeo tab during migration
 
 - Tab label defaults to **SEO** again; small **NEO** badge on the Wire tab (on by default) distinguishes it from MarkupSEO's **SEO** tab

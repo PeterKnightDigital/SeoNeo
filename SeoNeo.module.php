@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.1',
+			'version'  => '1.1.2',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -197,11 +197,13 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	public function init() {
 		$this->addHookProperty('Page::seoneo', $this, 'hookPageSeoNeo');
+		$this->addHookBefore('Modules::saveModuleConfigData', $this, 'hookBeforeSaveModuleConfigData');
 		$this->addHookAfter('Modules::saveModuleConfigData', $this, 'hookAfterSaveModuleConfigData');
 	}
 
 	public function ready() {
 		$this->addHookBefore('Fieldgroups::save', $this, 'hookFieldgroupSaveEnsureSeoFields');
+		$this->addHookAfter('ProcessTemplate::fieldAdded', $this, 'hookTemplateFieldAddedEnsureSeoFields');
 		if($this->shouldAutoInject()) {
 			$this->addHookAfter('Page::render', $this, 'hookPageRenderInject');
 		}
@@ -305,6 +307,51 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		return $added;
 	}
 
+	/**
+	 * When seoneo_tab is added via the template editor, insert missing SEO
+	 * fields into the in-memory fieldgroup before the pending save completes.
+	 */
+	public function hookTemplateFieldAddedEnsureSeoFields(HookEvent $event): void {
+		$field = $event->arguments(0);
+		if(!$field instanceof Field || $field->name !== 'seoneo_tab') return;
+		$template = $event->arguments(1);
+		if(!$template instanceof Template) return;
+
+		if(self::$ensuringSeoFields) return;
+		self::$ensuringSeoFields = true;
+		$added = $this->ensureSeoFieldsOnFieldgroup($template->fieldgroup);
+		self::$ensuringSeoFields = false;
+
+		if($added > 0 && $this->wire('page') && $this->wire('page')->process === 'ProcessTemplate') {
+			$this->message(sprintf(
+				$this->_('SeoNeo: added %d SEO field(s) to fieldgroup "%s".'),
+				$added,
+				$template->fieldgroup->name
+			));
+		}
+	}
+
+	/**
+	 * On upgrade, insert missing SeoNeo fields into every fieldgroup that
+	 * already has seoneo_tab (repairs templates saved before auto-complete
+	 * existed, or saves that did not persist the fieldgroup).
+	 */
+	protected function repairSeoFieldgroups(): int {
+		$repaired = 0;
+		foreach($this->wire('fieldgroups') as $fg) {
+			if(!$fg->hasField('seoneo_tab')) continue;
+			if(self::$ensuringSeoFields) continue;
+			self::$ensuringSeoFields = true;
+			$added = $this->ensureSeoFieldsOnFieldgroup($fg);
+			self::$ensuringSeoFields = false;
+			if($added > 0) {
+				$fg->save();
+				$repaired++;
+			}
+		}
+		return $repaired;
+	}
+
 	// ────────────────────────────────────────────────────────────────────
 	//  Install / Uninstall
 	// ────────────────────────────────────────────────────────────────────
@@ -312,7 +359,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public function ___install() {
 		$created = $this->createMissingFields();
 		$this->ensurePreviewFieldInputfield();
-		$this->ensureSeoTabLabel();
+		$this->ensureSeoTabFieldConfig();
 		$this->message(sprintf(
 			$this->_('SeoNeo: %d field(s) created. Add seoneo_tab to your templates to enable SEO editing.'),
 			$created
@@ -345,8 +392,16 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			$this->message($this->_('SeoNeo: SERP Preview field repaired (Inputfield class re-applied).'));
 		}
 
-		if($this->ensureSeoTabLabel() > 0) {
-			$this->message($this->_('SeoNeo: editor tab label synced from module config.'));
+		if($this->ensureSeoTabFieldConfig() > 0) {
+			$this->message($this->_('SeoNeo: editor tab field repaired (label and presentation).'));
+		}
+
+		$repaired = $this->repairSeoFieldgroups();
+		if($repaired > 0) {
+			$this->message(sprintf(
+				$this->_('SeoNeo: inserted missing SEO fields into %d fieldgroup(s) that already had seoneo_tab.'),
+				$repaired
+			));
 		}
 	}
 
@@ -391,6 +446,10 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 				$f->rows = 3;
 			}
 
+			// FieldtypeFieldsetTabOpen + seoneo_tab_END drives the Wire tab.
+			// Do not use collapsedTab here — PW wraps only the opener in a tab
+			// shell and leaves child fields outside the tab (empty tab UI).
+
 			if($name === 'seoneo_og_image') {
 				$f->maxFiles = 1;
 				$f->extensions = 'jpg jpeg png gif webp svg';
@@ -417,19 +476,40 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	/**
-	 * Ensure the seoneo_tab field label matches FIELD_LABELS (e.g. after rename
-	 * from "SEO" to "SeoNeo" so it does not collide with MarkupSEO's seo_tab).
+	 * Ensure seoneo_tab label matches module config and that presentation is
+	 * not collapsedTab (which breaks FieldtypeFieldsetTabOpen tab content).
 	 */
-	protected function ensureSeoTabLabel(): int {
+	protected function ensureSeoTabFieldConfig(?array $configData = null): int {
 		$field = $this->wire('fields')->get('seoneo_tab');
 		if(!$field) return 0;
 
-		$expected = $this->getEditorTabLabel();
-		if((string) $field->label === $expected) return 0;
+		$needsRepair = false;
+		if($configData !== null && array_key_exists('editor_tab_label', $configData)) {
+			$label = trim((string) $configData['editor_tab_label']);
+			$expected = $label !== '' ? $label : 'SEO';
+		} else {
+			$expected = $this->getEditorTabLabel();
+		}
+		if((string) $field->label !== $expected) {
+			$field->label = $expected;
+			$needsRepair = true;
+		}
+		$collapsed = (int) $field->collapsed;
+		$tabCollapsedTypes = [
+			Inputfield::collapsedTab,
+			Inputfield::collapsedTabAjax,
+			Inputfield::collapsedTabLocked,
+		];
+		if(in_array($collapsed, $tabCollapsedTypes, true)) {
+			$field->collapsed = Inputfield::collapsedNo;
+			$needsRepair = true;
+		}
 
-		$field->label = $expected;
-		$field->save();
-		return 1;
+		if($needsRepair) {
+			$field->save();
+			return 1;
+		}
+		return 0;
 	}
 
 	/**
@@ -563,11 +643,31 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	/**
-	 * Sync seoneo_tab field label when module config is saved.
+	 * Sync seoneo_tab field config when module config is saved.
 	 */
 	public function hookAfterSaveModuleConfigData(HookEvent $event): void {
 		if($event->arguments(0) !== 'SeoNeo') return;
-		$this->ensureSeoTabLabel();
+		/** @var array $configData */
+		$configData = $event->arguments(1);
+		if(!is_array($configData)) return;
+		foreach(['editor_tab_label', 'editor_tab_show_badge'] as $key) {
+			if(array_key_exists($key, $configData)) $this->set($key, $configData[$key]);
+		}
+		$this->ensureSeoTabFieldConfig($configData);
+	}
+
+	/**
+	 * Normalise checkbox value before module config is persisted.
+	 */
+	public function hookBeforeSaveModuleConfigData(HookEvent $event): void {
+		if($event->arguments(0) !== 'SeoNeo') return;
+		/** @var array $configData */
+		$configData = $event->arguments(1);
+		if(!is_array($configData)) return;
+		if(array_key_exists('editor_tab_show_badge', $configData)) {
+			$configData['editor_tab_show_badge'] = (int) $configData['editor_tab_show_badge'] > 0 ? 1 : 0;
+			$event->arguments(1, $configData);
+		}
 	}
 
 	/**
@@ -2429,16 +2529,17 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f = $modules->get('InputfieldText');
 		$f->name = 'editor_tab_label';
 		$f->label = $this->_('SEO tab label');
-		$f->description = $this->_('Label for the SeoNeo fieldset tab on the page editor. Default is "SEO". Change to "SEO Neo" or anything you prefer — synced to the seoneo_tab field on save.');
-		$f->value = $this->getEditorTabLabel();
+		$f->description = $this->_('Label for the SeoNeo fieldset tab on the page editor. Default is "SEO". Change to "SEO Neo" or anything you prefer — synced to the seoneo_tab field when you save this form.');
+		$f->value = (string) $this->get('editor_tab_label');
 		$f->columnWidth = 50;
 		$fieldset->add($f);
 
 		$f = $modules->get('InputfieldCheckbox');
 		$f->name = 'editor_tab_show_badge';
 		$f->label = $this->_('Show NEO badge on tab');
+		$f->label2 = $this->_('Enabled');
 		$f->description = $this->_('When enabled, a small "NEO" badge appears beside the tab label in the page editor. Recommended when MarkupSEO\'s "SEO" tab is also on the template — the field name (seoneo_tab) already differs; the badge makes the tab visually distinct.');
-		$f->value = $this->getEditorTabShowBadge() ? 1 : 0;
+		if((int) $this->get('editor_tab_show_badge') > 0) $f->attr('checked', 'checked');
 		$f->columnWidth = 50;
 		$fieldset->add($f);
 

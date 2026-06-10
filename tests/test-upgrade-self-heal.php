@@ -117,10 +117,30 @@ if (!$field) {
 	}
 }
 
+// ── 3b. seoneo_tab presentation (must not be collapsedTab) ───────────
+
+$tabField = wire('fields')->get('seoneo_tab');
+if (!$tabField) {
+	$fail('seoneo_tab field exists');
+} else {
+	$pass('seoneo_tab field exists');
+	$col = (int) $tabField->collapsed;
+	$badTabCollapsed = [
+		Inputfield::collapsedTab,
+		Inputfield::collapsedTabAjax,
+		Inputfield::collapsedTabLocked,
+	];
+	if (!in_array($col, $badTabCollapsed, true)) {
+		$pass("seoneo_tab->collapsed is not a tab-only presentation mode ({$col})");
+	} else {
+		$fail('seoneo_tab->collapsed must not be collapsedTab', "got {$col}");
+	}
+}
+
 // ── 4. Helpers are idempotent on a healthy install ───────────────────
 
 $ref = new \ReflectionClass($seoneo);
-foreach (['ensurePreviewFieldInputfield', 'ensurePreviewInputfieldInstalled'] as $methodName) {
+foreach (['ensurePreviewFieldInputfield', 'ensurePreviewInputfieldInstalled', 'ensureSeoTabFieldConfig', 'repairSeoFieldgroups'] as $methodName) {
 	if (!$ref->hasMethod($methodName)) {
 		$fail("$methodName() exists");
 		continue;
