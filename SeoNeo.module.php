@@ -38,6 +38,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	const FIELD_PREFIX = 'seoneo_';
 
+	/** @var bool Guard against recursive Fieldgroups::save during auto field insertion */
+	protected static bool $ensuringSeoFields = false;
+
 	const DEFAULT_FIELDS = [
 		'seoneo_tab'         => 'FieldtypeFieldsetTabOpen',
 		'seoneo_preview'     => 'InputfieldSeoNeoPreview',
@@ -93,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.0.0',
+			'version'  => '1.1.0-beta.1',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -195,6 +198,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	public function ready() {
+		$this->addHookBefore('Fieldgroups::save', $this, 'hookFieldgroupSaveEnsureSeoFields');
 		if($this->shouldAutoInject()) {
 			$this->addHookAfter('Page::render', $this, 'hookPageRenderInject');
 		}
@@ -228,6 +232,74 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			$cap = (int) $this->get('hard_cap_description');
 			if($cap > 0) $input->attr('maxlength', $cap);
 		}
+	}
+
+	// ────────────────────────────────────────────────────────────────────
+	//  Auto-complete SEO fieldset on templates
+	// ────────────────────────────────────────────────────────────────────
+
+	/**
+	 * When a fieldgroup gains seoneo_tab, insert any missing SeoNeo fields in
+	 * the canonical order (preview → title → … → tab_END) before the save
+	 * completes. Idempotent — safe on every fieldgroup save.
+	 */
+	public function hookFieldgroupSaveEnsureSeoFields(HookEvent $event): void {
+		if(self::$ensuringSeoFields) return;
+		$fg = $event->object;
+		if(!$fg instanceof Fieldgroup) return;
+
+		self::$ensuringSeoFields = true;
+		$added = $this->ensureSeoFieldsOnFieldgroup($fg);
+		self::$ensuringSeoFields = false;
+
+		if($added > 0 && $this->wire('page') && $this->wire('page')->process === 'ProcessTemplate') {
+			$this->message(sprintf(
+				$this->_('SeoNeo: added %d SEO field(s) to fieldgroup "%s".'),
+				$added,
+				$fg->name
+			));
+		}
+	}
+
+	/**
+	 * Insert missing DEFAULT_FIELDS entries into a fieldgroup that already has
+	 * seoneo_tab. Returns the number of fields added (in memory; caller saves).
+	 */
+	public function ensureSeoFieldsOnFieldgroup(Fieldgroup $fg): int {
+		if(!$fg->hasField('seoneo_tab')) return 0;
+
+		$fields = $this->wire('fields');
+		$tabField = $fields->get('seoneo_tab');
+		if(!$tabField) return 0;
+
+		$endField = $fg->hasField('seoneo_tab_END') ? $fields->get('seoneo_tab_END') : null;
+		$prev = $tabField;
+		$added = 0;
+
+		foreach(array_keys(self::DEFAULT_FIELDS) as $name) {
+			if($name === 'seoneo_tab') continue;
+			if($fg->hasField($name)) {
+				$existing = $fields->get($name);
+				if($existing) $prev = $existing;
+				continue;
+			}
+
+			$field = $fields->get($name);
+			if(!$field) continue;
+
+			if($endField && $name !== 'seoneo_tab_END') {
+				$fg->insertBefore($field, $endField);
+			} elseif($prev) {
+				$fg->insertAfter($field, $prev);
+			} else {
+				$fg->add($field);
+			}
+
+			if($name !== 'seoneo_tab_END' || !$endField) $prev = $field;
+			$added++;
+		}
+
+		return $added;
 	}
 
 	// ────────────────────────────────────────────────────────────────────

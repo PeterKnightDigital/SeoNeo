@@ -101,7 +101,7 @@ Things worth pointing out in that output:
 1. Copy the `SeoNeo` folder to `site/modules/`
 2. In the PW admin, go to Modules > Refresh, then install **SeoNeo**
 3. The module auto-creates these fields: `seoneo_tab`, `seoneo_preview`, `seoneo_title`, `seoneo_description`, `seoneo_canonical`, `seoneo_keywords`, `seoneo_noindex`, `seoneo_nofollow`
-4. Add `seoneo_tab` to any template to enable the SEO tab on those pages
+4. Add `seoneo_tab` to any template to enable the SEO tab on those pages — SeoNeo automatically inserts the remaining SEO fields (preview, title, description, canonical, etc.) in the correct order when you save the template
 
 ## Configuration
 
@@ -599,6 +599,10 @@ The Site-wide AI crawler management features that some users associate with Seo 
 5. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.0-beta.1 — Auto-complete SEO fieldset
+
+When you add `seoneo_tab` to a template, SeoNeo now inserts any missing SEO fields (`seoneo_preview`, `seoneo_title`, `seoneo_description`, etc.) in the canonical order when the fieldgroup is saved. Idempotent — safe on every template save; shows an admin notice when fields are added.
 
 ### 1.0.0 — Initial public release
 
