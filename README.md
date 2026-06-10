@@ -600,7 +600,7 @@ The Site-wide AI crawler management features that some users associate with Seo 
 
 ## Changelog
 
-### 1.1.0-beta.1 — Auto-complete SEO fieldset
+### 1.1.0 — Auto-complete SEO fieldset
 
 When you add `seoneo_tab` to a template, SeoNeo now inserts any missing SEO fields (`seoneo_preview`, `seoneo_title`, `seoneo_description`, etc.) in the canonical order when the fieldgroup is saved. Idempotent — safe on every template save; shows an admin notice when fields are added.
 
