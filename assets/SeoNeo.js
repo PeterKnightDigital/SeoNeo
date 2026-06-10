@@ -335,12 +335,29 @@
 		});
 	}
 
+	// ── Wire tab badge (page editor) ──────────────────────────────────
+
+	function injectTabBadge() {
+		if (!cfg.showTabBadge) return;
+		var tabLi = d.querySelector('ul.WireTabs li[id*="_seoneo_tab"]');
+		if (!tabLi) return;
+		var tabLink = tabLi.querySelector('a');
+		if (!tabLink) return;
+		tabLink.setAttribute('data-seoneo-tab', '1');
+		if (tabLink.querySelector('.seoneo-tab-badge')) return;
+		var badge = d.createElement('span');
+		badge.className = 'seoneo-tab-badge';
+		badge.textContent = 'NEO';
+		tabLink.appendChild(badge);
+	}
+
 	// ── Init ──────────────────────────────────────────────────────────
 
 	SeoNeo.init = function() {
 		injectCounters();
 		setCanonicalPlaceholder();
 		wirePreviewControls();
+		injectTabBadge();
 		refreshSerp();
 	};
 

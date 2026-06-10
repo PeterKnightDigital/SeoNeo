@@ -351,3 +351,22 @@
 .seoneo-counter[data-state="green"] { color: var(--sn-ok); }
 .seoneo-counter[data-state="amber"] { color: var(--sn-warn); }
 .seoneo-counter[data-state="red"]   { color: var(--sn-over); font-weight: 600; }
+
+/* ── Page editor Wire tab badge (SeoNeo tab only) ─────────────────── */
+
+ul.WireTabs a[data-seoneo-tab="1"] .seoneo-tab-badge {
+	display: inline-block;
+	margin-left: 0.35em;
+	padding: 0.1em 0.35em 0.05em;
+	font-size: 0.58em;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	vertical-align: middle;
+	line-height: 1.1;
+	border-radius: 3px;
+	background: var(--sn-accent, var(--pw-main-color, #eb1d61));
+	color: var(--sn-white, #fff);
+	text-transform: uppercase;
+	position: relative;
+	top: -0.05em;
+}

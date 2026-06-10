@@ -103,6 +103,8 @@ Things worth pointing out in that output:
 3. The module auto-creates these fields: `seoneo_tab`, `seoneo_preview`, `seoneo_title`, `seoneo_description`, `seoneo_canonical`, `seoneo_keywords`, `seoneo_noindex`, `seoneo_nofollow`
 4. Add `seoneo_tab` to any template to enable the SEO tab on those pages — SeoNeo automatically inserts the remaining SEO fields (preview, title, description, canonical, etc.) in the correct order when you save the template
 
+> **Already using MarkupSEO or Seo Maestro?** You can run both during migration — see [Installing alongside other SEO modules](#installing-alongside-other-seo-modules). The SeoNeo tab stays labeled **SEO** by default with a small **NEO** badge so it stays distinct from MarkupSEO's **SEO** tab.
+
 ## Configuration
 
 Go to Modules > Configure > SeoNeo:
@@ -130,6 +132,8 @@ Go to Modules > Configure > SeoNeo:
 | **Twitter / X site handle** | `@username` of the site itself (emitted as `twitter:site`) |
 | **Default Twitter / X creator handle** | `@username` of the content author (emitted as `twitter:creator`; hookable per-page) |
 | **Hard-cap title / description input length** | Optional `maxlength` enforcement on the page-edit form. Off by default (the soft amber/red counter is preferred) |
+| **SEO tab label** | Wire tab text for the SeoNeo fieldset (default **SEO**). Synced to the `seoneo_tab` field on config save |
+| **Show NEO badge on tab** | Small **NEO** pill beside the tab label in the page editor — on by default; helps distinguish from MarkupSEO's **SEO** tab during migration |
 
 ## Admin UI features
 
@@ -516,6 +520,41 @@ From **1.1.0**, add `seoneo_tab` to any template and save — SeoNeo inserts the
 
 For one-off data tasks (copying a legacy `summary` field into `seoneo_description`, bulk noindex on login pages, etc.), use Tracy Console with your own site-specific script or the ProcessWire API directly.
 
+## Installing alongside other SEO modules
+
+Many sites run **MarkupSEO** or **Seo Maestro** while migrating page-by-page to SeoNeo. That is supported — you can keep legacy fields on a template and copy values into the SeoNeo fields at your own pace.
+
+### Editor tabs
+
+MarkupSEO's `seo_tab` and SeoNeo's `seoneo_tab` both default to the label **SEO**, which is why two identical-looking tabs appear if both fieldsets are on the same template. The field **names** already differ (`seo_tab` vs `seoneo_tab`) — there is no technical clash, only a visual one.
+
+SeoNeo handles this with:
+
+| Mechanism | Purpose |
+|-----------|---------|
+| **`data-seoneo-tab="1"`** on the Wire tab link | Stable identifier for admin CSS/JS (set automatically) |
+| **NEO badge** (on by default) | Small pill beside the tab label → reads as **SEO** <small>NEO</small> |
+| **Configurable tab label** | Modules → Configure → SeoNeo → **SEO tab label** (e.g. change to `SEO Neo` or turn the badge off) |
+
+During migration you might see:
+
+| Tab | Typical content |
+|-----|-----------------|
+| **SEO** | MarkupSEO fields (`seo_title`, `seo_description`, …) |
+| **SEO** + NEO badge | SeoNeo fields (`seoneo_preview`, `seoneo_title`, …) |
+
+Seo Maestro usually adds a single `FieldtypeSeoMaestro` field (often named `seo`) on its own tab or in Content — it does not collide on tab name.
+
+### Frontend output
+
+The thing to watch is **`<head>` output**, not the editor: if both the legacy module and SeoNeo auto-inject meta tags, the page can get doubled titles and OG tags. Common approach during migration:
+
+- Keep both fieldsets in the editor for data entry
+- Disable auto-inject on whichever module is **not** yet authoritative for frontend output (SeoNeo module config → **Auto-inject**, or the equivalent on the legacy module)
+- Switch templates to `$page->seoneo->render()` when ready, then uninstall the legacy module
+
+Full feature comparison and migration steps: [Migrating from MarkupSEO or Seo Maestro](#migrating-from-markupseo-or-seo-maestro) below.
+
 ## Requirements
 
 - ProcessWire 3.0.200+
@@ -567,9 +606,10 @@ The Site-wide AI crawler management features that some users associate with Seo 
 
 ### Migration steps
 
-1. Install SEO NEO via Modules → Refresh → Install (this creates the `seoneo_*` fields)
-2. Add `seoneo_tab` to each template that needs an SEO tab and save — SeoNeo auto-inserts the remaining fields (1.1.0+). Copy any legacy field values (`summary` → `seoneo_description`, etc.) via Tracy Console or your own one-off script if needed
-3. **Rewrite template API calls.** Both legacy modules expose `$page->seo` as the template hook; SEO NEO uses `$page->seoneo`. The shape of the calls is preserved across the move, so most projects are a one-liner find/replace:
+1. Install SEO NEO via Modules → Refresh → Install **SeoNeo** only (the SERP Preview Inputfield installs with it)
+2. Add `seoneo_tab` to each template that needs SeoNeo — legacy SEO fields can stay on the same template while you copy data across (see [Installing alongside other SEO modules](#installing-alongside-other-seo-modules))
+3. Copy legacy values into SeoNeo fields at your pace (`seo_description` → `seoneo_description`, etc.) via the editor or Tracy Console
+4. **Rewrite template API calls.** Both legacy modules expose `$page->seo` as the template hook; SEO NEO uses `$page->seoneo`. The shape of the calls is preserved across the move, so most projects are a one-liner find/replace:
 
 	**From SeoMaestro:**
 	```php
@@ -586,10 +626,17 @@ The Site-wide AI crawler management features that some users associate with Seo 
 	echo $config->seo->title;         // → echo $page->seoneo->title;
 	echo $config->seo->description;   // → echo $page->seoneo->description;
 	```
-4. Uninstall MarkupSEO / Seo Maestro (the old fields stay on the page tree; remove them manually if you want a clean slate)
-5. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
+5. Uninstall MarkupSEO / Seo Maestro (the old fields stay on the page tree; remove them manually if you want a clean slate)
+6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.1 — Distinct SeoNeo tab during migration
+
+- Tab label defaults to **SEO** again; small **NEO** badge on the Wire tab (on by default) distinguishes it from MarkupSEO's **SEO** tab
+- Module config: **SEO tab label** and **Show NEO badge on tab**; label syncs to the `seoneo_tab` field on save
+- Wire tab link gets `data-seoneo-tab="1"` for stable admin targeting
+- README: **Installing alongside other SEO modules** — coexistence during migration
 
 ### 1.1.0 — Auto-complete SEO fieldset
 
