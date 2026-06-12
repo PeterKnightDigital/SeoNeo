@@ -101,7 +101,11 @@ Things worth pointing out in that output:
 1. Copy the `SeoNeo` folder to `site/modules/`
 2. In the PW admin, go to Modules > Refresh, then install **SeoNeo**
 3. The module auto-creates these fields: `seoneo_tab`, `seoneo_preview`, `seoneo_title`, `seoneo_description`, `seoneo_canonical`, `seoneo_keywords`, `seoneo_noindex`, `seoneo_nofollow`
-4. Add `seoneo_tab` to any template to enable the SEO tab on those pages — SeoNeo automatically inserts the remaining SEO fields (preview, title, description, canonical, etc.) in the correct order when you save the template
+4. Add **only** `seoneo_tab` to any template — SeoNeo automatically inserts the remaining SEO fields (preview, title, description, canonical, etc.) in the correct order when you save the template
+
+> **You don't need to add the SEO fields manually.** Just drop `seoneo_tab` onto a template's fieldgroup, save, and SeoNeo's `Fieldgroups::save` hook fills in the rest in the canonical order. Repeat per template — no bulk script, no template imports, no hand-ordering. This is the recommended workflow for both fresh installs and template-by-template migrations.
+
+> **Auto-inject requires `seoneo_tab` on the template.** The auto-inject checkbox in module config enables the `Page::render` hook, but injection only fires on pages whose template includes `seoneo_tab` (or the configured title field). If you enable auto-inject and see nothing on the front-end, check that the template has the field.
 
 > **Already using MarkupSEO or Seo Maestro?** You can run both during migration — see [Installing alongside other SEO modules](#installing-alongside-other-seo-modules). The SeoNeo tab stays labeled **SEO** by default with a small **NEO** badge so it stays distinct from MarkupSEO's **SEO** tab.
 
@@ -430,12 +434,56 @@ de=Seen & Pfade
 
 The `@id` URIs for Organization and WebSite intentionally stay language-invariant — schema.org best practice is to identify the same entity across locales and translate only the descriptive properties.
 
-### Hooks
+### Hooks — adding custom Schema.org types
 
 Two hookable entry points let you extend or override the graph per site, per template, or per page:
 
-- `___getJsonLd(Page $page): array` — returns the `@graph` array. Hook this to add nodes (Event, Recipe, Product, Course, etc.), modify existing ones, or remove nodes you don't want.
-- `___renderJsonLd(Page $page): string` — returns the rendered `<script>` tag (or empty when JSON-LD is disabled or the graph is empty).
+- `___getJsonLd(Page $page): array` — returns the full `['@context' => …, '@graph' => […]]` payload. Hook this to add custom types (Recipe, Event, Product, Course, LocalBusiness, RealEstateListing, etc.), modify existing nodes, or remove nodes you don't want.
+- `___renderJsonLd(Page $page): string` — returns the rendered `<script>` tag (or empty when JSON-LD is disabled or the graph is empty). Hook this to suppress JSON-LD on specific pages or templates.
+
+#### Example: add a Recipe node on `recipe` templates
+
+Drop this in `site/ready.php`:
+
+```php
+$wire->addHookAfter('SeoNeo::getJsonLd', function(HookEvent $event) {
+    $page = $event->arguments(0);
+    if($page->template->name !== 'recipe') return;
+
+    $data = $event->return;
+    $data['@graph'][] = [
+        '@type'        => 'Recipe',
+        'name'         => $page->title,
+        'description'  => $page->summary,
+        'image'        => $page->image ? $page->image->httpUrl : '',
+        'prepTime'     => 'PT' . (int) $page->prep_time . 'M',
+        'cookTime'     => 'PT' . (int) $page->cook_time . 'M',
+        'recipeYield'  => (string) $page->servings,
+        'recipeIngredient' => array_filter(array_map('trim', explode("\n", (string) $page->ingredients))),
+    ];
+    $event->return = $data;
+});
+```
+
+The same pattern works for any Schema.org type — `Event`, `Product`, `JobPosting`, `LocalBusiness`, `RealEstateListing`, etc. Refer to [schema.org](https://schema.org/) for the property names each type expects.
+
+#### Example: suppress BreadcrumbList on the homepage
+
+```php
+$wire->addHookAfter('SeoNeo::getJsonLd', function(HookEvent $event) {
+    $page = $event->arguments(0);
+    if($page->id !== 1) return;
+
+    $data = $event->return;
+    $data['@graph'] = array_values(array_filter(
+        $data['@graph'],
+        fn($node) => ($node['@type'] ?? '') !== 'BreadcrumbList'
+    ));
+    $event->return = $data;
+});
+```
+
+For a more comprehensive walk-through (default node composition, configuration options, multilingual handling), see the full [Structured Data (JSON-LD) docs at peterknight.digital](https://www.peterknight.digital/docs/seoneo/1.x/structured-data-json-ld/).
 
 ### Disabling
 
@@ -516,7 +564,7 @@ Manual rendering also makes it explicit which template files emit the SEO block,
 
 ## Rolling out to templates
 
-From **1.1.0**, add `seoneo_tab` to any template and save — SeoNeo inserts the remaining SEO fields in the correct order automatically. Repeat per template; no bulk script required.
+Add `seoneo_tab` to any template and save — SeoNeo inserts the remaining SEO fields in the correct order automatically. Repeat per template.
 
 For one-off data tasks (copying a legacy `summary` field into `seoneo_description`, bulk noindex on login pages, etc.), use Tracy Console with your own site-specific script or the ProcessWire API directly.
 
@@ -630,6 +678,15 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.4 — Auto-inject resilience + docs
+
+- **Error boundary inside `___renderHead()`** — the full section-builder pipeline is now wrapped in a try-catch. If any resolver or section builder throws (e.g. a hooked `getTitle` that crashes, a field-type edge case, a null reference inside `getOgLines`), the page renders normally without the SeoNeo block, and the error is written to a new ProcessWire log called `seoneo` (`site/assets/logs/seoneo.txt`). The log is created on demand on first failure — clean installs stay clean
+- **Defence in depth** — matching try-catches added to `SeoNeoAccessor::render()` (the `$page->seoneo->render()` template path) and `hookPageRenderInject()` (the auto-inject hook path), so all three call paths are protected
+- **Null-template safety** — `shouldAutoInject()` and `hookPageRenderInject()` now guard against the (rare) case of a page with no template object, preventing a TypeError on PHP 8.x
+- **Config hint when no templates have `seoneo_tab`** — when auto-inject is enabled but no fieldgroups include `seoneo_tab`, the module config checkbox shows a note explaining the field must be added to at least one template
+- **Docs: clearer auto-complete callout** — Installation section now flags that you only need to add `seoneo_tab`; the rest of the SEO fields are inserted automatically in the correct order on save (a 1.1.0 feature that was previously buried)
+- **Docs: custom Schema.org types** — the JSON-LD hooks section now includes worked examples for adding a `Recipe` node on a custom template and suppressing `BreadcrumbList` on the homepage, plus a link to the full structured-data reference at [peterknight.digital](https://www.peterknight.digital/docs/seoneo/1.x/structured-data-json-ld/)
 
 ### 1.1.3 — Fix NEO badge on Wire tab
 

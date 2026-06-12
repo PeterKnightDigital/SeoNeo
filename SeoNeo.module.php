@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.3',
+			'version'  => '1.1.4',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -605,13 +605,13 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	protected function shouldAutoInject(): bool {
 		if((int) $this->auto_inject !== 1) return false;
 		$page = $this->wire('page');
-		if(!$page || $page->template->name === 'admin') return false;
+		if(!$page || !$page->template || $page->template->name === 'admin') return false;
 		return true;
 	}
 
 	public function hookPageRenderInject(HookEvent $event) {
 		$page = $event->object;
-		if(!$page || !$page->id || $page->template->name === 'admin') return;
+		if(!$page || !$page->id || !$page->template || $page->template->name === 'admin') return;
 
 		$titleField = $this->get('role_title') ?: 'seoneo_title';
 		if(!$page->template->hasField($titleField) && !$page->template->hasField('seoneo_tab')) return;
@@ -620,7 +620,12 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		if($html === '' || stripos($html, '</head>') === false) return;
 		if(strpos($html, '<!-- SeoNeo -->') !== false) return;
 
-		$block = $this->renderHead($page);
+		try {
+			$block = $this->renderHead($page);
+		} catch(\Throwable $e) {
+			$this->wire('log')->save('seoneo', "Auto-inject renderHead() failed on page {$page->id}: " . $e->getMessage());
+			return;
+		}
 		if($block === '') return;
 
 		$position = strtolower((string) $this->get('inject_position'));
@@ -1804,24 +1809,29 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	}
 
 	public function ___renderHead(Page $page): string {
-		$lines = array_merge(
-			['<!-- SeoNeo -->'],
-			$this->getTitleLines($page),
-			$this->getDescriptionLines($page),
-			$this->getCanonicalLines($page),
-			$this->getRobotsLines($page),
-			$this->getKeywordsLines($page),
-			$this->getOgLines($page),
-			$this->getTwitterLines($page),
-			$this->getVerificationLines($page),
-			$this->getAuthorLines($page),
-			$this->getCustomMappingLines($page),
-			$this->getHreflangLines($page),
-			$this->getSchemaLines($page),
-			$this->getCustomBlockLines($page),
-			['<!-- /SeoNeo -->']
-		);
-		return implode("\n", array_filter($lines));
+		try {
+			$lines = array_merge(
+				['<!-- SeoNeo -->'],
+				$this->getTitleLines($page),
+				$this->getDescriptionLines($page),
+				$this->getCanonicalLines($page),
+				$this->getRobotsLines($page),
+				$this->getKeywordsLines($page),
+				$this->getOgLines($page),
+				$this->getTwitterLines($page),
+				$this->getVerificationLines($page),
+				$this->getAuthorLines($page),
+				$this->getCustomMappingLines($page),
+				$this->getHreflangLines($page),
+				$this->getSchemaLines($page),
+				$this->getCustomBlockLines($page),
+				['<!-- /SeoNeo -->']
+			);
+			return implode("\n", array_filter($lines));
+		} catch(\Throwable $e) {
+			$this->wire('log')->save('seoneo', "renderHead() failed on page {$page->id}: " . $e->getMessage());
+			return '';
+		}
 	}
 
 	// ────────────────────────────────────────────────────────────────────
@@ -2602,6 +2612,15 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->description = $this->_('When enabled, SeoNeo injects the meta block on front-end pages. Disable to call $page->seoneo->render() manually.');
 		if((int) $this->auto_inject === 1) $f->attr('checked', 'checked');
 		$f->columnWidth = 50;
+		if((int) $this->auto_inject === 1) {
+			$hasTemplates = false;
+			foreach($this->wire('fieldgroups') as $fg) {
+				if($fg->hasField('seoneo_tab')) { $hasTemplates = true; break; }
+			}
+			if(!$hasTemplates) {
+				$f->notes = $this->_('**Note:** No templates currently have the `seoneo_tab` field. Auto-inject only outputs on templates that include `seoneo_tab` — add it to at least one template for injection to take effect.');
+			}
+		}
 		$inputfields->add($f);
 
 		$f = $modules->get('InputfieldRadios');
@@ -3474,7 +3493,12 @@ class SeoNeoAccessor extends Wire {
 	}
 
 	public function render(): string {
-		return $this->module->renderHead($this->page);
+		try {
+			return $this->module->renderHead($this->page);
+		} catch(\Throwable $e) {
+			$this->wire('log')->save('seoneo', "render() failed on page {$this->page->id}: " . $e->getMessage());
+			return '';
+		}
 	}
 
 	public function renderTitle(): string {
