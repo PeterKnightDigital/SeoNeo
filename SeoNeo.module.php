@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.4',
+			'version'  => '1.1.5',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -1660,29 +1660,48 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		return $node;
 	}
 
+	protected function buildJsonLdBreadcrumbListItem(Page $page, int $position): ?array {
+		$name = trim((string) $page->title);
+		if($name === '') {
+			$home = $this->wire('pages')->get('/');
+			if($home && $home->id && $page->id === $home->id) {
+				$name = 'Home';
+			} else {
+				$name = trim((string) $page->name);
+			}
+		}
+		if($name === '') return null;
+
+		$url = $this->getCanonical($page);
+		if($url === '') $url = (string) $page->httpUrl;
+		if($url === '') return null;
+
+		return [
+			'@type' => 'ListItem',
+			'position' => $position,
+			'item' => [
+				'@id' => $url,
+				'name' => $name,
+			],
+		];
+	}
+
 	protected function buildJsonLdBreadcrumbs(Page $page): ?array {
 		$home = $this->wire('pages')->get('/');
 		if(!$home || !$home->id) return null;
 
 		$crumbs = [];
-		$parents = $page->parents();
 		$pos = 1;
-		foreach($parents as $p) {
+		foreach($page->parents() as $p) {
 			if(!$p || !$p->id) continue;
-			$crumbs[] = [
-				'@type' => 'ListItem',
-				'position' => $pos++,
-				'name' => (string) $p->title,
-				'item' => (string) $p->httpUrl,
-			];
+			$item = $this->buildJsonLdBreadcrumbListItem($p, $pos);
+			if($item) {
+				$crumbs[] = $item;
+				$pos++;
+			}
 		}
-		// Add the page itself as the final crumb
-		$crumbs[] = [
-			'@type' => 'ListItem',
-			'position' => $pos,
-			'name' => (string) $page->title,
-			'item' => $this->getCanonical($page),
-		];
+		$self = $this->buildJsonLdBreadcrumbListItem($page, $pos);
+		if($self) $crumbs[] = $self;
 
 		// Skip if only the page itself (no real breadcrumb trail)
 		if(count($crumbs) < 2) return null;

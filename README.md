@@ -77,9 +77,9 @@ the Lake District and Yorkshire Dales — viewing the article
           "isPartOf": { "@id": "https://lakesandtrails.go/#website" } },
         { "@type": "BreadcrumbList", "@id": "https://lakesandtrails.go/walks/nine-standards-rigg/#breadcrumb",
           "itemListElement": [
-            { "@type": "ListItem", "position": 1, "name": "Lakes & Trails",       "item": "https://lakesandtrails.go/" },
-            { "@type": "ListItem", "position": 2, "name": "Walks",                "item": "https://lakesandtrails.go/walks/" },
-            { "@type": "ListItem", "position": 3, "name": "Nine Standards Rigg",  "item": "https://lakesandtrails.go/walks/nine-standards-rigg/" }
+            { "@type": "ListItem", "position": 1, "item": { "@id": "https://lakesandtrails.go/", "name": "Lakes & Trails" } },
+            { "@type": "ListItem", "position": 2, "item": { "@id": "https://lakesandtrails.go/walks/", "name": "Walks" } },
+            { "@type": "ListItem", "position": 3, "item": { "@id": "https://lakesandtrails.go/walks/nine-standards-rigg/", "name": "Nine Standards Rigg" } }
           ] }
     ]
 }
@@ -419,7 +419,7 @@ SeoNeo emits a `<script type="application/ld+json">` block on every page contain
 - **WebPage** — the current page, with `name`, `description`, `url`, `inLanguage`, `isPartOf` (→ WebSite), `dateModified`, `datePublished`, and `primaryImageOfPage` (when an OG image resolves).
 - **Article** — added on pages whose template appears in **Article templates** (e.g. `journal_post,blog_post`), with `headline`, `description`, `image`, `datePublished`, `dateModified`, resolved `author`, publisher reference, and `inLanguage`.
 - **Person** — added on pages whose template appears in **Person templates** (defaults to `user` so PW User pages used as author bios are recognised), with `name`, `description`, `image`, `url`.
-- **BreadcrumbList** — added when **Emit BreadcrumbList** is enabled (on by default) and the page has at least one parent in the tree. Built from `$page->parents()` plus the page itself.
+- **BreadcrumbList** — added when **Emit BreadcrumbList** is enabled (on by default) and the page has at least one parent in the tree. Built from `$page->parents()` plus the page itself; each `ListItem` uses a nested `item: { @id, name }` object for validator compatibility.
 
 Nodes are wired via canonical `@id` URIs, so a single graph represents the site, page, author, and breadcrumb trail without duplication.
 
@@ -678,6 +678,12 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.5 — BreadcrumbList JSON-LD validation
+
+- **Fixed: `BreadcrumbList` `ListItem` nodes now use nested `item` objects** — each crumb is emitted as `{ "@type": "ListItem", "position": N, "item": { "@id": "<canonical URL>", "name": "<title>" } }` instead of a flat `name` + URL string. Stricter structured-data validators (including common site-audit tools) require `item.name` when validating against Google's rich-result schema; the previous format could pass manual inspection but fail automated checks.
+- **Canonical URLs for every crumb** — ancestor breadcrumbs now use `getCanonical()` rather than `httpUrl`, keeping www/https/slash policy consistent across the trail.
+- **Empty-title fallback** — crumbs skip pages with no resolvable label; the homepage falls back to `Home`, other pages to the page `name` when the title is empty.
 
 ### 1.1.4 — Auto-inject resilience + docs
 
