@@ -2326,8 +2326,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$out = trim($out);
 		$sep = trim((string) $this->title_separator);
 		if($sep !== '') {
-			$pattern = '/^' . preg_quote($sep, '/') . '+|' . preg_quote($sep, '/') . '+$/u';
-			$out = trim(preg_replace($pattern, '', $out));
+			$qs = preg_quote($sep, '/');
+			$out = preg_replace('/' . $qs . '(?:\s*' . $qs . ')+/u', $sep, $out);
+			$out = trim(preg_replace('/^' . $qs . '+|' . $qs . '+$/u', '', $out));
 		}
 		return $out;
 	}
