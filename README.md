@@ -93,7 +93,7 @@ Things worth pointing out in that output:
 - **`og:type=article` triggers `article:author` / `article:published_time` / `article:modified_time`** automatically (C14). The published / modified times come from the page's PW `created` / `modified` timestamps when no explicit override is set; the author defaults to the resolved `getAuthors()` chain.
 - **`hreflang` includes `x-default`** pointing at the default-language URL — the BCP47 codes use the language map, so `default` becomes `en-GB` rather than the unhelpful `default`.
 - **`twitter:card` switched to `summary_large_image`** automatically because an OG image is present. With no image it would be plain `summary`.
-- **JSON-LD `@graph`** wires four typed nodes (`Organization`, `WebSite`, `WebPage`, `BreadcrumbList`) by canonical `@id` so the page, site, and trail are a single linked graph rather than four standalone blobs.
+- **JSON-LD `@graph`** wires typed nodes (`Organization`, `WebSite`, `WebPage`, optional `Article` / `Book` / `Person`, `BreadcrumbList`) by canonical `@id` so the page, site, and trail are a single linked graph rather than standalone blobs.
 - **Empty fields are skipped** — every tag has a hookable resolver, and if a resolver returns `''` the tag never enters the output. The marker comments `<!-- SeoNeo -->` / `<!-- /SeoNeo -->` are only emitted by the full `render()` method, not the per-section partials.
 
 ## Installation
@@ -276,7 +276,7 @@ render method (`SeoNeo::renderOg`) apply to both `$page->seoneo->og->render()`
 and `$page->seoneo->renderOg()`. Use whichever style reads best in your
 template — most projects standardise on one.
 
-> ⚠️ **Schema / JSON-LD is BETA.** The auto `@graph` generator (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) ships in core and `$page->seoneo->schema->render()` / `renderSchema()` will return it, but the API shape, default `@graph` composition, and hook surface may still change. For production sites that need stable structured data today, hand-rolling JSON-LD via the standard hooks (`addHookAfter('SeoNeo::renderHead', …)`) remains the safer path until the helper API stabilises.
+> ⚠️ **Schema / JSON-LD is BETA.** The auto `@graph` generator (Organization, WebSite, WebPage, Article, Book, Person, BreadcrumbList) ships in core and `$page->seoneo->schema->render()` / `renderSchema()` will return it, but the API shape, default `@graph` composition, and hook surface may still change. For production sites that need stable structured data today, hand-rolling JSON-LD via the standard hooks (`addHookAfter('SeoNeo::renderHead', …)`) remains the safer path until the helper API stabilises.
 
 ### Composing your own `<head>` with partial methods
 
@@ -418,6 +418,7 @@ SeoNeo emits a `<script type="application/ld+json">` block on every page contain
 - **WebSite** — the site itself, with a `publisher` reference back to the Organization and the default-language `inLanguage`.
 - **WebPage** — the current page, with `name`, `description`, `url`, `inLanguage`, `isPartOf` (→ WebSite), `dateModified`, `datePublished`, and `primaryImageOfPage` (when an OG image resolves).
 - **Article** — added on pages whose template appears in **Article templates** (e.g. `journal_post,blog_post`), with `headline`, `description`, `image`, `datePublished`, `dateModified`, resolved `author`, publisher reference, and `inLanguage`.
+- **Book** — added on pages whose template appears in **Book templates** (e.g. `book,ebook`), with `name`, `description`, `image`, optional `isbn`, `numberOfPages`, `bookFormat` (defaults to digital/`EBook` when unset), resolved `author`, publisher reference, and `inLanguage`. Field names are configurable under **Book field mapping** in module config.
 - **Person** — added on pages whose template appears in **Person templates** (defaults to `user` so PW User pages used as author bios are recognised), with `name`, `description`, `image`, `url`.
 - **BreadcrumbList** — added when **Emit BreadcrumbList** is enabled (on by default) and the page has at least one parent in the tree. Built from `$page->parents()` plus the page itself; each `ListItem` uses a nested `item: { @id, name }` object for validator compatibility.
 
@@ -433,6 +434,20 @@ de=Seen & Pfade
 ```
 
 The `@id` URIs for Organization and WebSite intentionally stay language-invariant — schema.org best practice is to identify the same entity across locales and translate only the descriptive properties.
+
+### Book templates (publishers)
+
+For sites that catalogue books (print, digital, or both):
+
+1. In **Modules → Configure → SeoNeo → Structured data (JSON-LD)**, set **Book templates** to your template name(s), e.g. `book,ebook`.
+2. Add the mapped fields to that template (defaults: `book_author`, `book_isbn`, `book_format`, `cover_image`, `book_synopsis`, `book_published`, `book_pages`). Rename fields in **Book field mapping** if yours differ.
+3. Save a book page and inspect view-source for `"@type": "Book"` in the SeoNeo JSON-LD block.
+
+**Format values** for the `book_format` field: `ebook` / `digital` / `epub` / `pdf` → `EBook`; `paperback` / `softcover`; `hardcover` / `hardback`; `audiobook` / `audio`. When the field is empty, SeoNeo defaults to `EBook` (digital-friendly).
+
+**Authors:** plain text (comma-separated), a Page reference to an author bio page, or fall back to the Article default author / site author / site name.
+
+For edge cases (multiple editions, `Product`/`Offer` pricing, series volumes), extend the graph via `SeoNeo::getJsonLd` — the built-in Book node covers the common publisher catalogue case.
 
 ### Hooks — adding custom Schema.org types
 
@@ -631,7 +646,7 @@ Both legacy modules have been gradually unmaintained, and both ship a handful of
 | Search-engine verification (Google/Bing/Yandex/Pinterest/Facebook/Baidu) | ✓ | partial | ✓ | Accepts bare token or full `<meta>` snippet |
 | `<meta name="author">` | partial | ✓ | ✓ | Site-wide default + optional per-page `seoneo_author` field |
 | Multilingual (per-language fields) | ✓ | ✓ | ✓ | NEO uses native PW language-aware fields, not bespoke storage |
-| JSON-LD structured data emitter | ✗ | partial | ~ **BETA** | Auto `@graph` (Organization, WebSite, WebPage, Article, Person, BreadcrumbList) ships in core; API shape and defaults may still change — use hooks for production-critical schema |
+| JSON-LD structured data emitter | ✗ | partial | ~ **BETA** | Auto `@graph` (Organization, WebSite, WebPage, Article, Book, Person, BreadcrumbList) ships in core; API shape and defaults may still change — use hooks for production-critical schema |
 | Per-template SEO defaults with placeholders | ✗ | partial | ✓ | NEO: `{title}`, `{page.field}`, `{pageNum}`, pipe-separated fallbacks |
 | Smart-map fallbacks with ancestor walk | ✗ | ✗ | ✓ | Prefix any field with `*` to walk parents |
 | ProCache compatibility | partial | partial | ✓ | Documented and tested in both cache-miss and cache-hit paths |
@@ -678,6 +693,11 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.6 — Book JSON-LD + ProcessWire 3.0.16+ config hooks
+
+- **Book JSON-LD for publisher sites** — new **Book templates** setting and **Book field mapping** panel in Structured data config. Pages on listed templates (e.g. `book,ebook`) emit a Schema.org `Book` node in the same `@graph` as Organization, WebSite, WebPage, and BreadcrumbList. Supports digital-only titles via `bookFormat` (`EBook` by default), optional ISBN, cover image, synopsis, page count, and publication date mapped from your PW fields.
+- **Fix: hook `Modules::saveConfig` on PW 3.0.16+** — module config save hooks now target `saveConfig` instead of the deprecated `saveModuleConfigData` alias, removing the debug notice on newer ProcessWire builds.
 
 ### 1.1.5 — BreadcrumbList JSON-LD validation
 

@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.5',
+			'version'  => '1.1.6',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -147,6 +147,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'jsonld_default_author' => 0,
 			'jsonld_article_templates' => '',
 			'jsonld_person_templates' => 'user',
+			'jsonld_book_templates' => '',
+			'jsonld_book_field_author' => 'book_author',
+			'jsonld_book_field_isbn' => 'book_isbn',
+			'jsonld_book_field_format' => 'book_format',
+			'jsonld_book_field_cover' => 'cover_image',
+			'jsonld_book_field_synopsis' => 'book_synopsis',
+			'jsonld_book_field_published' => 'book_published',
+			'jsonld_book_field_pages' => 'book_pages',
 			'jsonld_breadcrumbs' => 1,
 			'jsonld_pretty'    => 1,
 			'smart_map_text'   => "title=headline,title\ndescription=summary,body",
@@ -197,13 +205,23 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	public function init() {
 		$this->addHookProperty('Page::seoneo', $this, 'hookPageSeoNeo');
-		$this->addHookBefore('Modules::saveModuleConfigData', $this, 'hookBeforeSaveModuleConfigData');
-		$this->addHookAfter('Modules::saveModuleConfigData', $this, 'hookAfterSaveModuleConfigData');
+		// Core calls Modules::saveConfig() (PW 3.0.16+); hook that instead of the deprecated alias.
+		$saveConfigHook = method_exists($this->wire('modules'), '___saveConfig')
+			? 'Modules::saveConfig'
+			: 'Modules::saveModuleConfigData';
+		$this->addHookBefore($saveConfigHook, $this, 'hookBeforeSaveModuleConfigData');
+		$this->addHookAfter($saveConfigHook, $this, 'hookAfterSaveModuleConfigData');
+		$this->addHookAfter('Modules::install', $this, 'hookSyncProcessSeoNeoNavTitle');
+		$this->addHookAfter('Modules::uninstall', $this, 'hookSyncProcessSeoNeoNavTitle');
+		$this->addHookAfter('Modules::getModuleConfigInputfields', $this, 'hookModuleConfigInputfieldsInjectAssets');
 	}
 
 	public function ready() {
 		$this->addHookBefore('Fieldgroups::save', $this, 'hookFieldgroupSaveEnsureSeoFields');
 		$this->addHookAfter('ProcessTemplate::fieldAdded', $this, 'hookTemplateFieldAddedEnsureSeoFields');
+		if($this->wire('config')->admin) {
+			$this->syncProcessSeoNeoNavTitle();
+		}
 		if($this->shouldAutoInject()) {
 			$this->addHookAfter('Page::render', $this, 'hookPageRenderInject');
 		}
@@ -360,6 +378,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$created = $this->createMissingFields();
 		$this->ensurePreviewFieldInputfield();
 		$this->ensureSeoTabFieldConfig();
+		$this->installProcessAdmin();
 		$this->message(sprintf(
 			$this->_('SeoNeo: %d field(s) created. Add seoneo_tab to your templates to enable SEO editing.'),
 			$created
@@ -403,6 +422,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 				$repaired
 			));
 		}
+
+		$this->installProcessAdmin();
 	}
 
 	/**
@@ -567,6 +588,46 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		return 1;
 	}
 
+	/**
+	 * Install the Setup → SEO Neo admin page if ProcessSeoNeo is present but not yet installed.
+	 */
+	protected function installProcessAdmin(): void {
+		$modules = $this->wire('modules');
+		if($modules->isInstalled('ProcessSeoNeo')) {
+			$this->syncProcessSeoNeoNavTitle();
+			return;
+		}
+		if(!$modules->getModuleFile('ProcessSeoNeo')) return;
+
+		try {
+			$modules->resetCache();
+			$modules->install('ProcessSeoNeo');
+			$this->syncProcessSeoNeoNavTitle();
+			$this->message($this->_('Installed SEO Neo under Setup → SEO Neo.'));
+		} catch(\Exception $e) {
+			$this->warning(sprintf(
+				$this->_('Could not auto-install ProcessSeoNeo: %s'),
+				$e->getMessage()
+			));
+		}
+	}
+
+	protected function hookSyncProcessSeoNeoNavTitle(HookEvent $event): void {
+		$name = (string) $event->arguments(0);
+		if($name !== 'SeoNeoBar' && $name !== 'ProcessSeoNeo') return;
+		$this->syncProcessSeoNeoNavTitle();
+	}
+
+	protected function syncProcessSeoNeoNavTitle(): void {
+		$modules = $this->wire('modules');
+		if(!$modules->isInstalled('ProcessSeoNeo')) return;
+		/** @var ProcessSeoNeo|null $process */
+		$process = $modules->get('ProcessSeoNeo');
+		if($process && method_exists($process, 'syncAdminPageTitle')) {
+			$process->syncAdminPageTitle();
+		}
+	}
+
 	public function ___uninstall() {
 		$fields = $this->wire('fields');
 		$fieldNames = array_reverse(array_keys(self::DEFAULT_FIELDS));
@@ -649,6 +710,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	/**
 	 * Sync seoneo_tab field config when module config is saved.
+	 * Hooked to Modules::saveConfig (PW 3.0.16+) or saveModuleConfigData on older versions.
 	 */
 	public function hookAfterSaveModuleConfigData(HookEvent $event): void {
 		if($event->arguments(0) !== 'SeoNeo') return;
@@ -663,6 +725,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	/**
 	 * Normalise checkbox value before module config is persisted.
+	 * Hooked to Modules::saveConfig (PW 3.0.16+) or saveModuleConfigData on older versions.
 	 */
 	public function hookBeforeSaveModuleConfigData(HookEvent $event): void {
 		if($event->arguments(0) !== 'SeoNeo') return;
@@ -745,6 +808,128 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			'showTabBadge'    => $this->getEditorTabShowBadge() ? 1 : 0,
 		];
 		$config->js('SeoNeo', $jsConfig);
+	}
+
+	/**
+	 * Inject SERP preview assets on the module config screen (Setup → SEO Neo
+	 * and Modules → Configure SeoNeo). Page editor injection uses hookInjectAssets.
+	 */
+	public function hookModuleConfigInputfieldsInjectAssets(HookEvent $event): void {
+		if($event->arguments(0) !== 'SeoNeo') return;
+		$this->injectConfigPreviewAssets();
+	}
+
+	public function injectConfigPreviewAssets(): void {
+		if(!$this->wire('config')->admin) return;
+
+		static $done = false;
+		if($done) return;
+		$done = true;
+
+		$config = $this->wire('config');
+		$url = $config->urls($this->className()) ?: $config->urls->siteModules . 'SeoNeo/';
+		$info = $this->wire('modules')->getModuleInfo($this->className());
+		$v = $info['version'] ?? '1.0.0';
+		$config->styles->add($url . "assets/SeoNeo.css?v=$v");
+		$config->scripts->add($url . "assets/SeoNeo.js?v=$v");
+
+		$pageUrl = $this->getConfigPreviewPageUrl();
+		$sampleTitle = $this->_('Example page title');
+		$sampleDesc = $this->_('Example meta description. Edit site name and title format above to see how your Google listing will look.');
+
+		$config->js('SeoNeo', [
+			'configPreview'  => 1,
+			'siteName'       => (string) $this->get('site_name'),
+			'titleSeparator' => (string) $this->get('title_separator'),
+			'titleFormat'    => (string) ($this->get('title_format') ?: '{title}'),
+			'pageUrl'        => $pageUrl,
+			'sampleTitle'    => $sampleTitle,
+			'sampleDesc'     => $sampleDesc,
+		]);
+	}
+
+	/**
+	 * Markup for the live SERP preview on the module config screen.
+	 */
+	public function renderConfigSerpPreviewMarkup(): string {
+		$sampleTitle = $this->_('Example page title');
+		$sampleDesc = $this->_('Example meta description. Edit site name and title format above to see how your Google listing will look.');
+		$pageUrl = $this->getConfigPreviewPageUrl();
+		$resolvedTitle = $this->formatTitle($sampleTitle);
+		$displayName = (string) $this->getSiteName();
+
+		$faviconUrl = '';
+		$hostOnly = '';
+		if($pageUrl) {
+			$parsed = parse_url($pageUrl);
+			$scheme = $parsed['scheme'] ?? 'https';
+			$host = $parsed['host'] ?? '';
+			$port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+			$faviconUrl = $scheme . '://' . $host . $port . '/favicon.ico';
+			$hostOnly = $host . $port;
+		}
+		if($displayName === '') $displayName = $hostOnly;
+
+		$esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+		$out  = "<div class='seoneo-serp-wrap' ";
+		$out .= "data-config-preview='1' ";
+		$out .= "data-sample-title='" . $esc($sampleTitle) . "' ";
+		$out .= "data-sample-desc='" . $esc($sampleDesc) . "' ";
+		$out .= "data-page-url='" . $esc($pageUrl) . "' ";
+		$out .= "data-resolved-title='" . $esc($resolvedTitle) . "' ";
+		$out .= "data-resolved-desc='" . $esc($sampleDesc) . "' ";
+		$out .= "data-host='" . $esc($hostOnly) . "' ";
+		$out .= "data-favicon='" . $esc($faviconUrl) . "' ";
+		$out .= "data-site-name='" . $esc($displayName) . "' ";
+		$out .= "data-surface='desktop'>";
+
+		$out .= "<div class='seoneo-serp-controls'>";
+		$out .= "  <div class='seoneo-serp-surface-toggle' role='tablist' aria-label='" . $esc($this->_('Preview surface')) . "'>";
+		$out .= "    <button type='button' class='seoneo-serp-surface-btn' data-surface='desktop' role='tab' aria-selected='true' aria-controls='seoneo-serp-config-card'>";
+		$out .= "      <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='2' y='3' width='20' height='14' rx='2'/><line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/></svg>";
+		$out .= "      <span>" . $esc($this->_('Desktop')) . "</span>";
+		$out .= "    </button>";
+		$out .= "    <button type='button' class='seoneo-serp-surface-btn' data-surface='mobile' role='tab' aria-selected='false' aria-controls='seoneo-serp-config-card'>";
+		$out .= "      <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><rect x='7' y='2' width='10' height='20' rx='2'/><line x1='11' y1='18' x2='13' y2='18'/></svg>";
+		$out .= "      <span>" . $esc($this->_('Mobile')) . "</span>";
+		$out .= "    </button>";
+		$out .= "  </div>";
+		$out .= "</div>";
+
+		$out .= "<div class='seoneo-serp-preview' id='seoneo-serp-config-card'>";
+		$out .= "<div class='seoneo-serp-source-row'>";
+		$out .= "  <span class='seoneo-serp-favicon'>";
+		if($faviconUrl) {
+			$out .= "<img src='" . $esc($faviconUrl) . "' alt='' loading='lazy' onerror='this.style.display=\"none\"'>";
+		}
+		$out .= "  </span>";
+		$out .= "  <div class='seoneo-serp-source-meta'>";
+		$out .= "    <div class='seoneo-serp-site-name'>" . $esc($displayName) . "</div>";
+		$out .= "    <div class='seoneo-serp-breadcrumb' data-full='" . $esc($pageUrl) . "' data-host='" . $esc($hostOnly) . "'>" . $esc($pageUrl) . "</div>";
+		$out .= "  </div>";
+		$out .= "</div>";
+		$out .= "<div class='seoneo-serp-title'>" . $esc($this->truncateSerpPreviewText($resolvedTitle, 60)) . "</div>";
+		$out .= "<div class='seoneo-serp-description'>" . $esc($this->truncateSerpPreviewText($sampleDesc, 160)) . "</div>";
+		$out .= "</div>";
+		$out .= "</div>";
+
+		return $out;
+	}
+
+	protected function getConfigPreviewPageUrl(): string {
+		$home = $this->wire('pages')->get('/');
+		if($home && $home->id) return (string) $home->httpUrl;
+
+		$config = $this->wire('config');
+		$scheme = $config->https ? 'https' : 'http';
+		$host = (string) ($config->httpHost ?: 'localhost');
+		return $scheme . '://' . $host . '/';
+	}
+
+	protected function truncateSerpPreviewText(string $s, int $n): string {
+		if(mb_strlen($s) <= $n) return $s;
+		return mb_substr($s, 0, $n - 1) . "\u{2026}";
 	}
 
 	// ────────────────────────────────────────────────────────────────────
@@ -1427,7 +1612,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	/**
 	 * Build the JSON-LD `@graph` for the given page. The graph contains a
 	 * site-wide Organization (or Person) node, a WebSite node, a WebPage
-	 * node, and any per-page additions (Article, Person, BreadcrumbList).
+	 * node, and any per-page additions (Article, Book, Person, BreadcrumbList).
 	 *
 	 * Hookable so downstream sites can add nodes, modify properties, or
 	 * remove nodes by manipulating the returned array.
@@ -1455,6 +1640,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		if($type === 'Article') {
 			$article = $this->buildJsonLdArticle($page);
 			if($article) $nodes[] = $article;
+		} elseif($type === 'Book') {
+			$book = $this->buildJsonLdBook($page);
+			if($book) $nodes[] = $book;
 		} elseif($type === 'Person') {
 			$person = $this->buildJsonLdPerson($page);
 			if($person) $nodes[] = $person;
@@ -1638,6 +1826,164 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		return $node;
 	}
 
+	/**
+	 * Build a Schema.org Book node for publisher / catalogue pages.
+	 * Field names are configurable in module config (Book templates section).
+	 */
+	protected function buildJsonLdBook(Page $page): ?array {
+		$url = $this->getCanonical($page);
+		if($url === '') return null;
+
+		$title = trim((string) $page->title);
+		if($title === '') return null;
+
+		$authors = $this->resolveBookAuthors($page);
+		if(!$authors) return null;
+
+		$node = [
+			'@type' => 'Book',
+			'@id'   => $url . '#book',
+			'name'  => $title,
+			'url'   => $url,
+			'author' => count($authors) === 1 ? $authors[0] : $authors,
+			'bookFormat' => $this->resolveBookFormatUrl($page),
+			'mainEntityOfPage' => ['@id' => $this->jsonLdWebPageId($page)],
+		];
+
+		$desc = $this->resolveBookSynopsis($page);
+		if($desc !== '') $node['description'] = $desc;
+
+		$image = $this->resolveBookCoverUrl($page);
+		if($image !== '') $node['image'] = $image;
+
+		$isbn = $this->resolveBookIsbn($page);
+		if($isbn !== '') $node['isbn'] = $isbn;
+
+		$pages = $this->resolveBookPageCount($page);
+		if($pages > 0) $node['numberOfPages'] = $pages;
+
+		$published = $this->resolveBookPublishedTimestamp($page);
+		if($published > 0) $node['datePublished'] = date('c', $published);
+
+		$lang = $this->wire('user')->language;
+		$inLang = $this->getHreflangCode($lang);
+		if($inLang !== '') $node['inLanguage'] = $inLang;
+
+		$orgId = $this->jsonLdOrgId();
+		if($orgId !== '') $node['publisher'] = ['@id' => $orgId];
+
+		return $node;
+	}
+
+	protected function getJsonLdBookFieldName(string $configKey, string $default): string {
+		$name = trim((string) $this->get($configKey));
+		return $name !== '' ? $name : $default;
+	}
+
+	protected function pageHasBookField(Page $page, string $fieldName): bool {
+		return $fieldName !== '' && $page->template && $page->template->hasField($fieldName);
+	}
+
+	protected function resolveBookAuthors(Page $page): array {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_author', 'book_author');
+		$authors = [];
+
+		if($this->pageHasBookField($page, $fieldName)) {
+			$raw = $page->get($fieldName);
+			if(is_object($raw) && $raw->id) {
+				$node = $this->buildJsonLdPerson($raw);
+				if($node) $authors[] = $node;
+			} else {
+				foreach($this->splitAuthorNames((string) $raw) as $name) {
+					$authors[] = ['@type' => 'Person', 'name' => $name];
+				}
+			}
+		}
+
+		if($authors) return $authors;
+
+		$fallback = $this->resolveArticleAuthor($page);
+		if($fallback) return [$fallback];
+
+		$name = trim((string) $this->getAuthor($page));
+		if($name === '') $name = trim((string) $this->getSiteName());
+		if($name === '') return [];
+
+		return [['@type' => 'Person', 'name' => $name]];
+	}
+
+	protected function splitAuthorNames(string $text): array {
+		$names = [];
+		foreach(preg_split('/[,;]+/', $text) ?: [] as $part) {
+			$name = trim($part);
+			if($name !== '') $names[] = $name;
+		}
+		return $names;
+	}
+
+	protected function resolveBookFormatUrl(Page $page): string {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_format', 'book_format');
+		$format = '';
+		if($this->pageHasBookField($page, $fieldName)) {
+			$format = strtolower(trim((string) $page->get($fieldName)));
+		}
+
+		return match($format) {
+			'ebook', 'digital', 'epub', 'pdf' => 'https://schema.org/EBook',
+			'audiobook', 'audio'              => 'https://schema.org/AudiobookFormat',
+			'hardcover', 'hardback'           => 'https://schema.org/Hardcover',
+			'paperback', 'softcover'          => 'https://schema.org/Paperback',
+			default                           => 'https://schema.org/EBook',
+		};
+	}
+
+	protected function resolveBookSynopsis(Page $page): string {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_synopsis', 'book_synopsis');
+		if($this->pageHasBookField($page, $fieldName)) {
+			$val = trim(strip_tags((string) $this->readField($page, $fieldName)));
+			if($val !== '') return $val;
+		}
+		return $this->getDescription($page);
+	}
+
+	protected function resolveBookCoverUrl(Page $page): string {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_cover', 'cover_image');
+		if($this->pageHasBookField($page, $fieldName)) {
+			$val = $page->get($fieldName);
+			if(is_object($val)) {
+				$img = method_exists($val, 'first') ? $val->first() : $val;
+				if($img && method_exists($img, 'httpUrl')) {
+					$url = trim((string) $img->httpUrl);
+					if($url !== '') return $url;
+				}
+			} elseif(is_string($val) && $val !== '') {
+				return trim($val);
+			}
+		}
+		return $this->getOgImage($page);
+	}
+
+	protected function resolveBookIsbn(Page $page): string {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_isbn', 'book_isbn');
+		if(!$this->pageHasBookField($page, $fieldName)) return '';
+		return preg_replace('/[^0-9X]/i', '', (string) $page->get($fieldName)) ?: '';
+	}
+
+	protected function resolveBookPageCount(Page $page): int {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_pages', 'book_pages');
+		if(!$this->pageHasBookField($page, $fieldName)) return 0;
+		return max(0, (int) $page->get($fieldName));
+	}
+
+	protected function resolveBookPublishedTimestamp(Page $page): int {
+		$fieldName = $this->getJsonLdBookFieldName('jsonld_book_field_published', 'book_published');
+		if($this->pageHasBookField($page, $fieldName)) {
+			$ts = (int) $page->get($fieldName);
+			if($ts > 0) return $ts;
+		}
+		return isset($page->created) ? (int) $page->created : 0;
+	}
+
 	protected function buildJsonLdPerson(Page $page): ?array {
 		$name = trim((string) $page->title);
 		if($name === '') $name = trim((string) $page->name);
@@ -1718,6 +2064,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 		$personTemplates = $this->parseJsonLdLines((string) $this->get('jsonld_person_templates'), ',');
 		if(in_array($tpl, $personTemplates, true)) return 'Person';
+
+		$bookTemplates = $this->parseJsonLdLines((string) $this->get('jsonld_book_templates'), ',');
+		if(in_array($tpl, $bookTemplates, true)) return 'Book';
 
 		$articleTemplates = $this->parseJsonLdLines((string) $this->get('jsonld_article_templates'), ',');
 		if(in_array($tpl, $articleTemplates, true)) return 'Article';
@@ -2400,7 +2749,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	 * same dotted-path / unformatted / strip-tags / collapse-whitespace
 	 * pipeline used by the main resolveSmartMap loop. Returns '' on miss.
 	 */
-	protected function readSmartMapValue(Page $page, string $fieldName): string {
+	public function readSmartMapValue(Page $page, string $fieldName): string {
 		if(str_contains($fieldName, '.')) {
 			$val = $this->getDeep($page, $fieldName);
 		} elseif(!$page->template || !$page->template->hasField($fieldName)) {
@@ -2600,6 +2949,18 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->notes = $this->_('Tip: `{title}{separator}{pageNum}{separator}{site_name}` produces "Articles | Page 2 | My Site" automatically and falls back to "Articles | My Site" on the first page.');
 		$f->value = $this->title_format;
 		$inputfields->add($f);
+
+		$fieldset = $modules->get('InputfieldFieldset');
+		$fieldset->label = $this->_('SERP Preview');
+		$fieldset->icon = 'eye';
+		$fieldset->description = $this->_('Sample Google result using your site name and title format. Updates as you edit the fields above.');
+		$f = $modules->get('InputfieldMarkup');
+		$f->name = 'seoneo_config_serp_preview';
+		$f->label = $this->_('Preview');
+		$f->skipLabel = Inputfield::skipLabelHeader;
+		$f->value = $this->renderConfigSerpPreviewMarkup();
+		$fieldset->add($f);
+		$inputfields->add($fieldset);
 
 		// Per-language site name map — only show on multi-language installs.
 		$languages = $this->wire('languages');
@@ -2805,7 +3166,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 		$fs = $modules->get('InputfieldFieldset');
 		$fs->label = $this->_('Structured data (JSON-LD)');
-		$fs->description = $this->_('SEO NEO can emit a `<script type="application/ld+json">` block on every page containing an Organization (or Person), WebSite, WebPage, optional Article / Person, and BreadcrumbList. This is what feeds Google Search rich results and helps AI search agents (Perplexity, Bing Copilot, etc.) understand site authorship and structure.');
+		$fs->description = $this->_('SEO NEO can emit a `<script type="application/ld+json">` block on every page containing an Organization (or Person), WebSite, WebPage, optional Article / Book / Person, and BreadcrumbList. This is what feeds Google Search rich results and helps AI search agents (Perplexity, Bing Copilot, etc.) understand site authorship and structure.');
 		$fs->collapsed = Inputfield::collapsedYes;
 
 		$f = $modules->get('InputfieldCheckbox');
@@ -2918,6 +3279,39 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->value = $this->get('jsonld_person_templates') ?: 'user';
 		$f->columnWidth = 50;
 		$fs->add($f);
+
+		$f = $modules->get('InputfieldText');
+		$f->name = 'jsonld_book_templates';
+		$f->label = $this->_('Book templates');
+		$f->description = $this->_('Comma-separated list of template names whose pages should be emitted with an additional `Book` node alongside the `WebPage` (e.g. `book,ebook,title`). Useful for publishers and catalogues. Empty by default.');
+		$f->placeholder = 'book,ebook';
+		$f->value = $this->get('jsonld_book_templates');
+		$f->columnWidth = 50;
+		$fs->add($f);
+
+		$bookFs = $modules->get('InputfieldFieldset');
+		$bookFs->label = $this->_('Book field mapping');
+		$bookFs->description = $this->_('Map ProcessWire field names used on your book templates. Defaults suit a typical publisher setup; change only if your field names differ. Leave a mapping blank to use the default name shown in the placeholder.');
+		$bookFs->collapsed = Inputfield::collapsedYes;
+		foreach([
+			'jsonld_book_field_author'    => [$this->_('Author field'), 'book_author', $this->_('Text or Page reference. Comma-separated names allowed for plain text.')],
+			'jsonld_book_field_isbn'      => [$this->_('ISBN field'), 'book_isbn', $this->_('Optional. Omit or leave empty on digital-only titles.')],
+			'jsonld_book_field_format'    => [$this->_('Format field'), 'book_format', $this->_('Select/options value mapped to Schema.org bookFormat: ebook, paperback, hardcover, audiobook.')],
+			'jsonld_book_field_cover'     => [$this->_('Cover image field'), 'cover_image', $this->_('Image field. Falls back to the resolved OG image when empty.')],
+			'jsonld_book_field_synopsis'  => [$this->_('Synopsis field'), 'book_synopsis', $this->_('Long description. Falls back to the resolved meta description when empty.')],
+			'jsonld_book_field_published' => [$this->_('Published date field'), 'book_published', $this->_('Datetime field. Falls back to the page created date when empty.')],
+			'jsonld_book_field_pages'     => [$this->_('Page count field'), 'book_pages', $this->_('Optional integer field for numberOfPages.')],
+		] as $key => [$label, $placeholder, $desc]) {
+			$f = $modules->get('InputfieldText');
+			$f->name = $key;
+			$f->label = $label;
+			$f->description = $desc;
+			$f->placeholder = $placeholder;
+			$f->value = $this->get($key) ?: $placeholder;
+			$f->columnWidth = 50;
+			$bookFs->add($f);
+		}
+		$fs->add($bookFs);
 
 		$f = $modules->get('InputfieldPageListSelect');
 		$f->name = 'jsonld_default_author';
@@ -3291,7 +3685,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	 * The seoneo_custom textarea deliberately bypasses this method — that
 	 * field is rendered verbatim by design.
 	 */
-	protected function readField(Page $page, string $fieldName): string {
+	public function readField(Page $page, string $fieldName): string {
 		if($fieldName === '' || !$page->template->hasField($fieldName)) return '';
 
 		$val = method_exists($page, 'getUnformatted')

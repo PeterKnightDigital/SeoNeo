@@ -71,6 +71,25 @@
 		return raw + sep + siteName;
 	}
 
+	function expandTitleFormat(raw, siteName, sep, format) {
+		format = format || cfg.titleFormat || '{title}{separator}{site_name}';
+		if (!siteName) sep = '';
+		var out = format
+			.replace(/\{title\}/g, raw || '')
+			.replace(/\{site_name\}/g, siteName || '')
+			.replace(/\{separator\}/g, sep || '')
+			.replace(/\{pageNum\}/g, '')
+			.replace(/\{pageNumber\}/g, '');
+		out = out.trim();
+		var sepTrim = (sep || '').trim();
+		if (sepTrim) {
+			var esc = sepTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			var re = new RegExp('^' + esc + '+|' + esc + '+$', 'g');
+			out = out.replace(re, '').trim();
+		}
+		return out;
+	}
+
 	// Find the per-language input value for a given fieldname + language id.
 	// PW multilang fields are rendered as `<name>` for the default language
 	// and `<name>__<langId>` for other languages. We look up the input by
@@ -115,6 +134,34 @@
 
 		var surface = getCurrentSurface();
 		var truncBudget = TRUNCATE[surface] || TRUNCATE.desktop;
+
+		if (wrap.getAttribute('data-config-preview') === '1') {
+			var siteNameInput = d.querySelector('[name="site_name"]');
+			var sepInput = d.querySelector('[name="title_separator"]');
+			var formatInput = d.querySelector('[name="title_format"]');
+			var siteName = siteNameInput ? siteNameInput.value : (cfg.siteName || '');
+			var sep = sepInput ? sepInput.value : (cfg.titleSeparator || '');
+			var format = formatInput ? formatInput.value : (cfg.titleFormat || '{title}{separator}{site_name}');
+			var sampleTitle = wrap.getAttribute('data-sample-title') || cfg.sampleTitle || 'Example page title';
+			var sampleDesc = wrap.getAttribute('data-sample-desc') || cfg.sampleDesc || '';
+			var pageUrl = wrap.getAttribute('data-page-url') || cfg.pageUrl || '';
+			var hostOnly = wrap.getAttribute('data-host') || '';
+			var faviconUrl = wrap.getAttribute('data-favicon') || '';
+			var title = expandTitleFormat(sampleTitle, siteName, sep, format);
+			var displayName = siteName || hostOnly;
+
+			titleEl.textContent = truncate(title, truncBudget.title);
+			descEl.textContent = truncate(sampleDesc, truncBudget.desc);
+			if (siteNameEl) siteNameEl.textContent = displayName;
+			if (breadcrumbEl) {
+				breadcrumbEl.textContent = (surface === 'mobile' && hostOnly) ? hostOnly : pageUrl;
+			}
+			if (faviconImg && faviconUrl && faviconImg.src !== faviconUrl) {
+				faviconImg.src = faviconUrl;
+				faviconImg.style.display = '';
+			}
+			return;
+		}
 
 		var titleField = wrap.getAttribute('data-title-field') || cfg.roleTitle || 'seoneo_title';
 		var descField  = wrap.getAttribute('data-desc-field') || cfg.roleDescription || 'seoneo_description';
@@ -335,6 +382,18 @@
 		});
 	}
 
+	function wireConfigPreview() {
+		var wrap = d.querySelector('.seoneo-serp-wrap[data-config-preview="1"]');
+		if (!wrap || wrap._seoneoConfigWired) return;
+		wrap._seoneoConfigWired = true;
+		['site_name', 'title_separator', 'title_format'].forEach(function(name) {
+			var input = d.querySelector('[name="' + name + '"]');
+			if (!input) return;
+			input.addEventListener('input', refreshSerp);
+			input.addEventListener('change', refreshSerp);
+		});
+	}
+
 	// ── Wire tab badge (page editor) ──────────────────────────────────
 
 	function findSeoNeoTabLink() {
@@ -369,6 +428,12 @@
 	// ── Init ──────────────────────────────────────────────────────────
 
 	SeoNeo.init = function() {
+		if (cfg.configPreview) {
+			wirePreviewControls();
+			wireConfigPreview();
+			refreshSerp();
+			return;
+		}
 		injectCounters();
 		setCanonicalPlaceholder();
 		wirePreviewControls();
