@@ -694,10 +694,11 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 
 ## Changelog
 
-### 1.1.6 — Book JSON-LD + ProcessWire 3.0.16+ config hooks
+### 1.1.6 — Book JSON-LD, module config SERP preview, PW 3.0.16+ hooks
 
 - **Book JSON-LD for publisher sites** — new **Book templates** setting and **Book field mapping** panel in Structured data config. Pages on listed templates (e.g. `book,ebook`) emit a Schema.org `Book` node in the same `@graph` as Organization, WebSite, WebPage, and BreadcrumbList. Supports digital-only titles via `bookFormat` (`EBook` by default), optional ISBN, cover image, synopsis, page count, and publication date mapped from your PW fields.
 - **Fix: hook `Modules::saveConfig` on PW 3.0.16+** — module config save hooks now target `saveConfig` instead of the deprecated `saveModuleConfigData` alias, removing the debug notice on newer ProcessWire builds.
+- **Module config SERP preview** — live Google-style preview on the SeoNeo module config screen; updates as you edit site name, separator, and title format.
 
 ### 1.1.5 — BreadcrumbList JSON-LD validation
 
