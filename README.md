@@ -449,12 +449,53 @@ For sites that catalogue books (print, digital, or both):
 
 For edge cases (multiple editions, `Product`/`Offer` pricing, series volumes), extend the graph via `SeoNeo::getJsonLd` — the built-in Book node covers the common publisher catalogue case.
 
-### Hooks — adding custom Schema.org types
+### Hooks — extending the graph
 
-Two hookable entry points let you extend or override the graph per site, per template, or per page:
+Use **Book templates**, **Article templates**, and **Person templates** in module config for the built-in nodes. Hooks are for **extending** that graph, **adding types we do not ship yet**, or **per-site edge cases** — not as a replacement for config when the built-in mapping fits.
 
-- `___getJsonLd(Page $page): array` — returns the full `['@context' => …, '@graph' => […]]` payload. Hook this to add custom types (Recipe, Event, Product, Course, LocalBusiness, RealEstateListing, etc.), modify existing nodes, or remove nodes you don't want.
+Two hookable entry points:
+
+- `___getJsonLd(Page $page): array` — returns the full `['@context' => …, '@graph' => […]]` payload. Hook this to add custom types (Recipe, Event, Product, etc.), modify existing nodes, or remove nodes you don't want.
 - `___renderJsonLd(Page $page): string` — returns the rendered `<script>` tag (or empty when JSON-LD is disabled or the graph is empty). Hook this to suppress JSON-LD on specific pages or templates.
+
+#### Example: extend the built-in Book node on `book` templates
+
+When **Book templates** is configured, SEO NEO already emits a `Book` node. Use a hook to enrich it — for example series membership or external catalogue URLs (`sameAs`):
+
+```php
+$wire->addHookAfter('SeoNeo::getJsonLd', function(HookEvent $event) {
+    $page = $event->arguments(0);
+    if($page->template->name !== 'book') return;
+
+    $data = $event->return;
+    if(!is_array($data['@graph'] ?? null)) return;
+
+    foreach($data['@graph'] as &$node) {
+        if(($node['@type'] ?? '') !== 'Book') continue;
+
+        // Link to a series landing page (Page reference field: book_series)
+        if($page->book_series && $page->book_series->id) {
+            $node['isPartOf'] = [
+                '@type' => 'CreativeWorkSeries',
+                'name'  => (string) $page->book_series->title,
+                'url'   => (string) $page->book_series->httpUrl,
+            ];
+        }
+
+        // External IDs — one URL per line in book_sameas (Goodreads, Amazon, etc.)
+        $sameAs = array_values(array_filter(array_map(
+            'trim',
+            explode("\n", (string) $page->book_sameas)
+        )));
+        if($sameAs) $node['sameAs'] = $sameAs;
+
+        break;
+    }
+    unset($node);
+
+    $event->return = $data;
+});
+```
 
 #### Example: add a Recipe node on `recipe` templates
 
@@ -480,7 +521,37 @@ $wire->addHookAfter('SeoNeo::getJsonLd', function(HookEvent $event) {
 });
 ```
 
-The same pattern works for any Schema.org type — `Event`, `Product`, `JobPosting`, `LocalBusiness`, `RealEstateListing`, etc. Refer to [schema.org](https://schema.org/) for the property names each type expects.
+#### Example: manual Book node (when Book templates is not used)
+
+Prefer **Book templates** in module config when you can. The hook below is for legacy field names, one-off templates, or sites on SEO NEO before 1.1.6. Leave **Book templates** empty or you may get duplicate `Book` nodes.
+
+```php
+$wire->addHookAfter('SeoNeo::getJsonLd', function(HookEvent $event) {
+    $page = $event->arguments(0);
+    if($page->template->name !== 'book') return;
+
+    $data = $event->return;
+    if(!is_array($data['@graph'] ?? null)) return;
+
+    $url = $page->seoneo->canonical;
+    if($url === '') return;
+
+    $data['@graph'][] = [
+        '@type' => 'Book',
+        '@id'   => $url . '#book',
+        'name'  => (string) $page->title,
+        'url'   => $url,
+        'description' => $page->seoneo->description,
+        'image' => $page->seoneo->ogImage,
+        'bookFormat' => 'https://schema.org/EBook',
+        'author' => ['@type' => 'Person', 'name' => (string) $page->book_author],
+        'mainEntityOfPage' => ['@id' => $url . '#webpage'],
+    ];
+    $event->return = $data;
+});
+```
+
+The same `getJsonLd` pattern works for any Schema.org type — `Event`, `Product`, `JobPosting`, `LocalBusiness`, etc. Refer to [schema.org](https://schema.org/) for the property names each type expects.
 
 #### Example: suppress BreadcrumbList on the homepage
 
@@ -693,6 +764,10 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
+
+### 1.1.7 — Canonical request context
+
+- **Fixed: fallback canonicals only include the current view’s extra path (pagination or URL segments) for the page being viewed.** Asking SeoNeo for another page’s canonical — for example breadcrumb JSON-LD ancestors while you are on `/blog/page/2/` — no longer copies that extra path onto those other URLs. Hreflang alternates follow the same rule.
 
 ### 1.1.6 — Book JSON-LD, module config SERP preview, PW 3.0.16+ hooks
 

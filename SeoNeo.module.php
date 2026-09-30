@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.6',
+			'version'  => '1.1.7',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -995,7 +995,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$field = $this->get('role_canonical') ?: 'seoneo_canonical';
 		$raw = $this->readField($page, $field);
 		if($raw !== '') return $this->absolutiseCanonical($raw, $page);
-		return $this->applyCanonicalPolicies((string) $page->httpUrl);
+		return $this->applyCanonicalPolicies((string) $page->httpUrl, $page);
 	}
 
 	/**
@@ -1011,12 +1011,19 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	 * Defaults are 'include' for both, which matches Google's modern
 	 * "each indexable URL is its own canonical" guidance.
 	 */
-	protected function applyCanonicalPolicies(string $base): string {
+	protected function applyCanonicalPolicies(string $base, Page $page): string {
 		$base = rtrim($base, '/');
 		if($base === '') return '/';
 
 		$input = $this->wire('input');
 		if(!$input) return $base . '/';
+
+		// Pagination and URL segments belong to the visitor's current view.
+		// Asking about other pages (breadcrumb JSON-LD, CLI) must not inherit
+		// /page2/ from this request.
+		if(!$this->shouldApplyRequestContext($page)) {
+			return $base . '/';
+		}
 
 		$pagePolicy = (string) $this->get('canonical_pagination_policy') ?: 'include';
 		$segmentPolicy = (string) $this->get('canonical_segment_policy') ?: 'include';
@@ -1036,6 +1043,16 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		}
 
 		return $base . '/';
+	}
+
+	/**
+	 * Whether $page is the page this HTTP request is actually viewing.
+	 * CLI and admin Process requests typically fail this check.
+	 */
+	protected function shouldApplyRequestContext(Page $page): bool {
+		if(!$page || !$page->id) return false;
+		$viewed = $this->wire('page');
+		return $viewed && (int) $viewed->id > 0 && (int) $viewed->id === (int) $page->id;
 	}
 
 	/**
@@ -2570,10 +2587,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		if(!$langs || count($langs) < 2) return [];
 
 		$input = $this->wire('input');
-		$pageNum = $input ? max(1, (int) $input->pageNum()) : 1;
-		$segmentStr = ($input && method_exists($input, 'urlSegmentStr'))
-			? trim((string) $input->urlSegmentStr(), '/')
-			: '';
+		$pageNum = 1;
+		$segmentStr = '';
+		if($this->shouldApplyRequestContext($page) && $input) {
+			$pageNum = max(1, (int) $input->pageNum());
+			$segmentStr = method_exists($input, 'urlSegmentStr')
+				? trim((string) $input->urlSegmentStr(), '/')
+				: '';
+		}
 
 		$defaultLang = method_exists($langs, 'getDefault') ? $langs->getDefault() : null;
 		$out = [];
