@@ -180,8 +180,7 @@
 		// Title: editor's typed value for the selected language wins; else
 		// server-resolved fallback from the per-language payload.
 		var rawTitle = lp ? getValueForLang(titleField, langId) : getActiveValue(titleField);
-		// Match PHP: typed Meta title is the full title; fallback is server-resolved getTitle().
-		var title = rawTitle ? rawTitle : fallbackTitle;
+		var title = rawTitle ? formatTitle(rawTitle) : fallbackTitle;
 
 		var desc = lp ? getValueForLang(descField, langId) : getActiveValue(descField);
 		if (!desc) desc = fallbackDesc;

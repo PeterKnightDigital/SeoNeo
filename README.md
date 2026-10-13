@@ -115,10 +115,10 @@ Go to Modules > Configure > SeoNeo:
 
 | Setting | What it does |
 |---|---|
-| **Site name** | Brand name used in **Title format** and placeholders (e.g. "Lakes & Trails") — not auto-appended when **Meta title** is filled in |
+| **Site name** | Appended to titles (e.g. "Peter Knight Digital") |
 | **Per-language site name** | Optional `langname=name` per line (e.g. `de=Mein Beispiel`); only shown when languages are active |
-| **Title format** | Applied when the title comes from smart-map or page title (Meta title empty). Default: `{title}{separator}{site_name}` (also `{pageNum}`, `{pageNumber}`) |
-| **Title separator** | Character(s) used inside **Title format** and in per-template `title=` lines via `{separator}` (default: ` \| `) |
+| **Title format** | How `<title>` is built: `{title}{separator}{site_name}` (also accepts `{pageNum}` and `{pageNumber}` for paginated lists) |
+| **Title separator** | Character(s) between title and site name (default: ` \| `) |
 | **Auto-inject** | Automatically insert the meta block in `<head>` |
 | **Injection position** | Top (right after `<head>`) or Bottom (before `</head>`, default) |
 | **Canonical URL policy** | Pagination behaviour and URL-segment behaviour for the auto-canonical (default: include both, matching modern Google guidance) |
@@ -323,45 +323,15 @@ embedding inside your own markup.
 
 For title and description, SeoNeo resolves values in order:
 
-1. **Page SEO field**: explicit `seoneo_title` / `seoneo_description` — returned verbatim (not passed through Title format or description truncation)
+1. **Page SEO field**: the explicit `seoneo_title` / `seoneo_description` value
 2. **Smart-map fallback**: tries configured fallback fields (e.g. `headline`, `summary`, `body`). Dotted paths reach into nested data: `banner.image.description`, `gallery.first.alt`, `matrix_blocks.first.body`, `pagetable_items.0.summary`. Missing references at any step are skipped silently. Prefix any field with `*` to fall back to ancestors when the current page leaves it blank — e.g. `*section_description` walks parents nearest-first and stops at the first non-empty value
-3. **Template default**: from module config, with `{title}`, `{site_name}`, `{separator}`, `{page.fieldname}`, `{pageNum}`, `{pageNumber}` placeholders. Pipe-separated fallbacks pick the first non-empty value (`{long_title|title}`). A `title=` line is the **full** `<title>` after expansion (global **Title format** is not applied); include `{separator}` and `{site_name}` in the line when you want them. Only used when the SEO title field and smart-map are empty.
+3. **Template default**: from module config, with `{title}`, `{site_name}`, `{page.fieldname}`, `{pageNum}`, `{pageNumber}` placeholders. Pipe-separated fallbacks pick the first non-empty value (`{long_title|title}`)
 4. **Site default**: page title as ultimate fallback for title; empty for description
 5. **Empty**: tag is not output
 
 Each step is hookable (`___getTitle`, `___getDescription`, etc.).
 
-**Title format** — applied when the resolved value came from smart-map or page title (steps 2 and 4). Not applied to values typed into `seoneo_title` (step 1) or per-template `title=` defaults (step 3). Include `{separator}` and `{site_name}` in the SEO title field when you want them on that page.
-
 **Description truncation** — values resolved from the smart-map or a template default (steps 2 and 3) are stripped of HTML, collapsed to single spaces, and truncated at the nearest word boundary to the configured **Max description length** (default 180 chars), with an ellipsis appended. Values typed directly into `seoneo_description` (step 1) are returned verbatim, on the assumption that the editor knows what they want. Set the limit to `0` in module config to disable truncation entirely.
-
-### How the browser `<title>` is built (plain English)
-
-On the page editor **SEO** tab, the field labelled **Meta Title** (`seoneo_title`) is the override for the HTML `<title>` tag. **Meta Description** (`seoneo_description`) works the same way for the description meta tag: what you type is what ships.
-
-**Title format** (in **Modules → Configure → SeoNeo**) only applies when **Meta title** is **empty** and the title is resolved from **Smart field mapping** or the page’s **Title** field (ProcessWire page title). It does **not** run again on top of **Meta title** or on **Per-template defaults** `title=` lines.
-
-#### Fictional example — Lakes & Trails (Lake District walking holidays)
-
-Assume module config:
-
-- **Site name:** `Lakes & Trails`
-- **Title separator:** ` | `
-- **Title format:** `{title}{separator}{site_name}`
-- **Smart field mapping:** `title=long_title,title`
-
-| Page | ProcessWire **Title** (Content tab) | **Meta title** (`seoneo_title`) | Per-template default | Resulting `<title>` |
-|------|--------------------------------------|----------------------------------|----------------------|---------------------|
-| Home (`home`) | `Home` | *(empty)* | `[home]` `title={site_name}` | `Lakes & Trails` |
-| Walk (`walk`) | `Helvellyn Ridge Walk` | *(empty)* | `[walk]` `title={long_title\|title}{separator}{site_name}` | `Helvellyn Ridge Walk \| Lakes & Trails` *(or long_title if set)* |
-| Walk | `Helvellyn Ridge Walk` | `Helvellyn Ridge Walk \| Lakes & Trails` | *(any)* | `Helvellyn Ridge Walk \| Lakes & Trails` *(exactly Meta title)* |
-| Walk | `Helvellyn Ridge Walk` | *(empty)* | *(none)* | `Helvellyn Ridge Walk \| Lakes & Trails` *(smart-map → **Title format**)* |
-
-**Before SeoNeo 1.1.8 (old behaviour)** on the last row: same output. On the **Meta title** row, if the editor typed only `Helvellyn Ridge Walk`, the tag was still `Helvellyn Ridge Walk | Lakes & Trails` — which looked like Meta title was “ignored” because **Title format** always ran. If they typed the full string including `| Lakes & Trails`, the site name could be appended **twice**.
-
-**After 1.1.8:** fill **Meta title** when you want the **complete** `<title>`. Leave it empty when you want **Title format** to add `| Lakes & Trails` from the page **Title** or smart-map fields.
-
-**Per-template defaults** only apply when **Meta title** is empty **and** smart-map did not supply a title. A `title=` line is the full `<title>` after placeholders expand — include `{separator}{site_name}` in that line when you want branding (see the `walk` row above).
 
 ## Canonical URLs
 
@@ -794,14 +764,6 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 6. If your old module had a sitemap, redirects, or analytics features turned on, install the recommended companion modules above
 
 ## Changelog
-
-### 1.1.8 — Meta title and per-template title defaults
-
-- **Meta title is the full `<title>`** — values in the page editor **Meta title** field (`seoneo_title`) are output verbatim, matching **Meta description** behaviour. Global **Title format** applies only when the title is resolved from smart-map or the ProcessWire page **Title** field ([#6](https://github.com/PeterKnightDigital/SeoNeo/issues/6)).
-- **Per-template `title=` lines are the full `<title>`** — after placeholder expansion, the string is not passed through **Title format** again. Use `{separator}` and `{site_name}` in the line when you want them ([#5](https://github.com/PeterKnightDigital/SeoNeo/issues/5)).
-- **`{separator}` in template defaults** — the configured title separator can be used in per-template default strings.
-- **SERP preview** — live preview on the SEO tab shows typed **Meta title** as-is instead of re-applying a simplified title format in JavaScript.
-- **Upgrade note:** if editors only put the short page title in **Meta title** and relied on **Title format** to append the site name, either clear **Meta title** (use fallbacks + format) or paste the full browser title including `| site name`.
 
 ### 1.1.7 — Canonical request context
 
