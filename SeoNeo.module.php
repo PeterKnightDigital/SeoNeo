@@ -73,7 +73,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 
 	const FIELD_DESCRIPTIONS = [
 		'seoneo_preview'     => 'Live preview of how this page will appear in Google search results. Updates as you type — switch between desktop and mobile to check both layouts.',
-		'seoneo_title'       => 'Override the page title used in search results. Leave empty to use smart-map fallbacks.',
+		'seoneo_title'       => 'Full meta title for this page (used as-is in the <title> tag). Leave empty to use smart-map fallbacks and the global Title format.',
 		'seoneo_description' => 'A short summary for search engine results. Leave empty to use smart-map fallbacks.',
 		'seoneo_canonical'   => 'Leave empty to use the page URL automatically. Accepts an absolute URL (https://example.com/path/) or a root-relative path (/path/) — relative paths are expanded against the current site\'s scheme and host.',
 		'seoneo_keywords'    => 'Comma-separated keywords. Most search engines no longer use this, but some sites still want it.',
@@ -96,7 +96,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public static function getModuleInfo() {
 		return [
 			'title'    => 'SeoNeo',
-			'version'  => '1.1.7',
+			'version'  => '1.1.8',
 			'summary'  => 'Modern SEO coordinator for ProcessWire — uses native PW fields for meta, robots, canonical, and more.',
 			'icon'     => 'search-plus',
 			'autoload' => true,
@@ -950,11 +950,26 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	public function ___getTitle(Page $page): string {
 		$field = $this->get('role_title') ?: 'seoneo_title';
 		$raw = $this->readField($page, $field);
+		$hasExplicitTitle = $raw !== '';
 
 		if($raw === '') $raw = $this->resolveSmartMap($page, 'title');
-		if($raw === '') $raw = $this->renderTemplateDefault($page, 'title');
+
+		$fromTemplateDefault = false;
+		if($raw === '') {
+			$tplDefault = $this->renderTemplateDefault($page, 'title');
+			if($tplDefault !== '') {
+				$raw = $tplDefault;
+				$fromTemplateDefault = true;
+			}
+		}
 		if($raw === '') $raw = (string) $page->title;
 		if($raw === '') return '';
+
+		// Per-template title= lines are the full <title> after placeholder expansion.
+		if($fromTemplateDefault) return $raw;
+
+		// Values typed into the SEO title field are the full <title> (like description).
+		if($hasExplicitTitle) return $raw;
 
 		return $this->formatTitle($raw);
 	}
@@ -976,6 +991,8 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	 *
 	 * Only called on smart-mapped and template-default values — values typed
 	 * explicitly into seoneo_description are returned verbatim.
+	 *
+	 * @see ___getTitle() — explicit seoneo_title values are also returned verbatim.
 	 */
 	protected function truncateDescription(string $text): string {
 		$text = preg_replace('/\s+/u', ' ', trim(strip_tags($text)));
@@ -3413,11 +3430,14 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		$f->description = $this->_(
 			'Default meta values per template. Format: [template-name] then key=value lines. ' .
 			'Recognised keys: title, description, og_type. ' .
-			'Placeholders inside values: `{title}`, `{site_name}`, `{page.fieldname}`, `{fieldname}` (shorthand), `{pageNum}`, `{pageNumber}`. ' .
+			'A `title=` line is the full `<title>` for that template once placeholders are expanded — it does not pass through the global Title format. ' .
+			'Add `{separator}` and `{site_name}` in the line when you want them. ' .
+			'Only applies when the page SEO title field and smart-map are empty. ' .
+			'Placeholders: `{title}`, `{site_name}`, `{separator}`, `{page.fieldname}`, `{fieldname}` (shorthand), `{pageNum}`, `{pageNumber}`. ' .
 			'Pipe-separated fallbacks pick the first non-empty value: `{long_title|title}`, `{summary|body|intro}`. ' .
 			'Dotted paths reach into nested data: `{banner.image.description}`.'
 		);
-		$f->notes = $this->_("Example:\n[home]\ndescription=Welcome to {site_name}.\n\n[blog-post]\nog_type=article\ndescription={summary|body}\ntitle={long_title|title}");
+		$f->notes = $this->_("Example:\n[home]\ntitle={site_name}\ndescription=Welcome to {site_name}.\n\n[blog-post]\nog_type=article\ndescription={summary|body}\ntitle={long_title|title}{separator}{site_name}");
 		$f->value = $this->get('template_defaults_text');
 		$f->rows = 8;
 		$inputfields->add($f);
@@ -3738,6 +3758,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 	 * Examples:
 	 *   `{title}`                                 — page title
 	 *   `{site_name}`                             — module-config site name
+	 *   `{separator}`                             — configured title separator (blank when site name is empty)
 	 *   `{page.summary}`                          — page field, current syntax
 	 *   `{long_title|title}`                      — long_title if set, else title
 	 *   `{seoneo_title|headline|title}`           — first non-empty
@@ -3753,6 +3774,7 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 			// {separator}-style markers from sibling features).
 			$looksLikeToken = $expr === 'title'
 				|| $expr === 'site_name'
+				|| $expr === 'separator'
 				|| $expr === 'pageNum'
 				|| $expr === 'pageNumber'
 				|| str_starts_with($expr, 'page.')
@@ -3782,6 +3804,9 @@ class SeoNeo extends WireData implements Module, ConfigurableModule {
 		if($token === '') return '';
 		if($token === 'title') return (string) $page->title;
 		if($token === 'site_name') return $this->getSiteName();
+		if($token === 'separator') {
+			return $this->getSiteName() === '' ? '' : (string) $this->get('title_separator');
+		}
 		if($token === 'pageNum') return $this->resolvePageNumLabel();
 		if($token === 'pageNumber') return $this->resolvePageNumber();
 
