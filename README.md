@@ -765,6 +765,14 @@ Site-wide AI crawler management features that some users associate with Seo Maes
 
 ## Changelog
 
+### 1.1.9 — Meta title + Title format (restored); per-template titles; no double branding
+
+- **Meta title + dynamic branding restored** — a filled **Meta title** is again the custom title *segment*; global **Title format** still appends `{separator}{site_name}` (your override can differ from the Content tab **Title** without typing the firm name literally). ([#6](https://github.com/PeterKnightDigital/SeoNeo/issues/6) addressed without treating meta as a full literal `<title>`.)
+- **No double site name** — if **Meta title** already ends with the configured separator + site name (a pasted full browser title), **Title format** is skipped so branding is not appended twice.
+- **Per-template `title=` lines** — the expanded string is the full browser title; use `{separator}` / `{site_name}` in the line. Global **Title format** does not run again ([#5](https://github.com/PeterKnightDigital/SeoNeo/issues/5)).
+- **`{separator}` in per-template defaults** — available in template default placeholder expansion.
+- **Note:** release **1.1.8** was withdrawn (same day); it made filled Meta title a literal full `<title>` and removed dynamic branding — do not use.
+
 ### 1.1.7 — Canonical request context
 
 - **Fixed: fallback canonicals only include the current view’s extra path (pagination or URL segments) for the page being viewed.** Asking SeoNeo for another page’s canonical — for example breadcrumb JSON-LD ancestors while you are on `/blog/page/2/` — no longer copies that extra path onto those other URLs. Hreflang alternates follow the same rule.
